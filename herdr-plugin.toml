@@ -1,0 +1,40 @@
+id = "gren"
+name = "gren"
+version = "0.1.0"
+min_herdr_version = "0.7.0"
+description = "Create, switch, and remove git worktrees via gren — with gren's post-create setup"
+platforms = ["macos", "linux"]
+
+# Run gren's post-create setup whenever a worktree is born on herdr's side:
+# the native "New worktree" dialog, the repo RIGHT-CLICK menu, or
+# `herdr worktree create`. herdr emits worktree.created from the UI since #662.
+[[events]]
+on = "worktree.created"
+command = ["bash", "-c", "exec bash \"$HERDR_PLUGIN_ROOT/on-created.sh\""]
+
+# Workspace action: opens the switch/create picker in a split pane. Plugin panes
+# default their cwd to the plugin root, so pass --cwd = the workspace's repo
+# (from the injected context JSON); otherwise gren runs in the plugin dir.
+[[actions]]
+id = "open"
+title = "Worktree: switch / create (gren)"
+contexts = ["workspace"]
+command = ["bash", "-c", "cwd=$(jq -r '.workspace_cwd // .focused_pane_cwd' <<<\"$HERDR_PLUGIN_CONTEXT_JSON\"); exec \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint picker --placement split --direction down --cwd \"$cwd\" --focus"]
+
+[[actions]]
+id = "remove"
+title = "Worktree: remove (gren)"
+contexts = ["workspace"]
+command = ["bash", "-c", "cwd=$(jq -r '.workspace_cwd // .focused_pane_cwd' <<<\"$HERDR_PLUGIN_CONTEXT_JSON\"); exec \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint remover --placement split --direction down --cwd \"$cwd\" --focus"]
+
+[[panes]]
+id = "picker"
+title = "gren"
+placement = "split"
+command = ["bash", "-c", "exec bash \"$HERDR_PLUGIN_ROOT/picker.sh\""]
+
+[[panes]]
+id = "remover"
+title = "gren — remove"
+placement = "split"
+command = ["bash", "-c", "exec bash \"$HERDR_PLUGIN_ROOT/remove.sh\""]
