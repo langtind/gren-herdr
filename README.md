@@ -22,9 +22,13 @@ resulting worktrees.
 
 **1. gren runs on every worktree herdr creates.** herdr emits `worktree.created`
 from its built-in UI — including the repo **right-click → "New worktree"** menu
-and the `prefix+shift+g` dialog. This plugin listens for that event and runs
-`gren hook-run --type post-create` on the new checkout, so your env files, deps,
-and hooks are set up automatically. No extra step.
+and the `prefix+shift+g` dialog. This plugin listens for that event and runs your
+repo's `.gren/post-create.sh` **in the new worktree's own pane** — a real TTY, so
+interactive setup (1Password `op` biometric unlock, `make seed`) and live,
+uncapped output work, with the worktree's own direnv-loaded shell. When there's
+no hook script or no pane, it falls back to `gren hook-run` inline (captured
+output). Either way your env files, deps, and hooks are set up automatically —
+no extra step.
 
 **2. A gren-driven switch/create picker** (`gren.open`): an fzf picker over your
 worktrees. Press `Enter` on a match to open it, or type a new name and press
@@ -115,10 +119,17 @@ herdr server reload-config
 
 ## Notes
 
+- **TTY / interactive setup.** gren runs *simple* post-create hooks with captured
+  stdio (no TTY), and herdr's `worktree.created` event is detached — so an inline
+  hook can't give an interactive tool a terminal. To fix that, when your repo has
+  a `.gren/post-create.sh`, the event dispatches it into the new worktree's pane
+  (`herdr pane run`), where it inherits a real TTY. If you rely on a custom hook
+  *command* (not the script) that needs a TTY, mark it `interactive = true` as a
+  named hook, or keep it in `.gren/post-create.sh`.
 - **Branch on auto-setup.** herdr's `worktree.created` event carries the new
   checkout path but not the branch name, so the setup hook recovers the branch
-  from git (`git symbolic-ref --short HEAD`) before calling `gren hook-run`. Your
-  post-create hook still receives the branch as `$2`.
+  from git (`git symbolic-ref --short HEAD`). Your post-create hook receives it
+  as `$2`.
 - **Removing a dirty worktree.** `gren delete` refuses a worktree with uncommitted
   or untracked files (commit, stash, or delete them first). The remover surfaces
   gren's message rather than force-deleting.
