@@ -49,26 +49,32 @@ if [[ -z $repo_root ]]; then
 fi
 
 herdr=${HERDR_BIN_PATH:-herdr}
-pane=${HERDR_PANE_ID:-}
-[[ -z $pane ]] && pane=$(jq -r '.focused_pane_id // empty' <<<"$ctx")
-
+# The new worktree's root pane (the event's workspace focused pane) — we split it
+# so setup shows right below the worktree's own shell.
+target=$(jq -r '.focused_pane_id // empty' <<<"$ctx")
 hook="$repo_root/.gren/post-create.sh"
 
-# Preferred: run the hook script directly in the new worktree's pane for a real TTY.
-if [[ -n $repo_root && -x $hook && -n $pane ]]; then
-	# gren post-create args: WORKTREE_PATH BRANCH_NAME BASE_BRANCH REPO_ROOT.
-	# The event carries no base ref; post-create only uses it for failure hints.
-	run_cmd="cd $(printf '%q' "$path") && $(printf '%q' "$hook") $(printf '%q' "$path") $(printf '%q' "$branch") '' $(printf '%q' "$repo_root")"
-	# Let the freshly spawned shell finish init (direnv/prompt) so the typed
-	# command isn't swallowed by shell startup.
-	sleep 2
-	"$herdr" pane run "$pane" "$run_cmd"
-	echo "dispatched gren post-create to pane $pane (branch=${branch:-?})"
-	exit 0
+# Preferred: run the hook AS a dedicated pane process split below the new
+# worktree's shell. A pane's command runs with a real, user-visible TTY (like the
+# picker's fzf), so 1Password `op` / `make seed` work and output is live and
+# uncapped — and because it's a spawned process (not text typed into a shell)
+# there's no shell-startup race. See bootstrap.sh.
+if [[ -n $repo_root && -x $hook && -n $target ]]; then
+	if "$herdr" plugin pane open \
+		--plugin "${HERDR_PLUGIN_ID:-gren}" --entrypoint bootstrap \
+		--target-pane "$target" --placement split --direction down --cwd "$path" --no-focus \
+		--env "GREN_HERDR_WORKTREE=$path" \
+		--env "GREN_HERDR_BRANCH=$branch" \
+		--env "GREN_HERDR_REPO_ROOT=$repo_root" >/dev/null 2>&1; then
+		echo "opened gren setup pane below $target (branch=${branch:-?})"
+		exit 0
+	fi
+	echo "plugin pane open failed; falling back to inline"
 fi
 
 # Fallback: run gren's configured post-create hooks inline (captured output, no
-# TTY). Covers custom hook commands and the no-pane case; no-ops on non-gren repos.
+# TTY). Covers custom hook commands, the no-workspace case, and pane-open errors;
+# no-ops on non-gren repos.
 cd "$path" || { echo "worktree path unavailable: $path"; exit 0; }
 echo "gren post-create setup (inline): branch=${branch:-?} path=$path"
 exec gren hook-run --type post-create --path "$path" --branch "$branch"

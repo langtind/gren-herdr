@@ -27,6 +27,15 @@ title = "Worktree: remove (gren)"
 contexts = ["workspace"]
 command = ["bash", "-c", "cwd=$(jq -r '.workspace_cwd // .focused_pane_cwd' <<<\"$HERDR_PLUGIN_CONTEXT_JSON\"); exec \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint remover --placement split --direction down --cwd \"$cwd\" --focus"]
 
+# Runs the repo's gren post-create setup AS this pane's process, so it gets a
+# real TTY (1Password op, make seed) without racing a shell's startup. The
+# worktree.created event opens this into the new worktree's workspace.
+[[panes]]
+id = "bootstrap"
+title = "gren setup"
+placement = "split"
+command = ["bash", "-c", "exec bash \"$HERDR_PLUGIN_ROOT/bootstrap.sh\""]
+
 [[panes]]
 id = "picker"
 title = "gren"
