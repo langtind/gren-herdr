@@ -33,7 +33,8 @@ with the worktree's own direnv-loaded shell; hooks are approved once per project
 deterministic dev **port** so you can tell which worktree owns which. When
 there's no pane, it falls back to `gren hook-run` inline (captured output).
 Either way your env files, deps, and hooks are set up automatically — no extra
-step. Requires **gren ≥ 0.15.0** for `--interactive`.
+step. Requires **gren ≥ 0.16.0** (0.15.0 for `--interactive`; 0.16.0 fixes
+`$REPO_ROOT` resolving to the main checkout for hooks run from a worktree).
 
 **2. A gren-driven switch/create picker** (`gren.open`): an fzf picker over your
 worktrees. Press `Enter` on a match to switch to it, or type a new name and press
@@ -132,7 +133,7 @@ herdr server reload-config
   (inline, script, named, user-level) to inherit the pane's real TTY — no need to
   mark hooks `interactive = true` or keep them in `.gren/post-create.sh`. Because
   a human is at the terminal, `--interactive` also prompts for hook approval the
-  first time (remembered per project). Requires gren ≥ 0.15.0.
+  first time (remembered per project). Requires gren ≥ 0.16.0.
 - **Per-worktree ports / DBs.** Use `{{ branch | hash_port }}` (a deterministic
   port in 10000–19999) and `{{ branch | sanitize_db }}` in your hooks to give each
   worktree its own dev server port and database, so parallel worktrees don't
