@@ -15,14 +15,19 @@ for bin in gren jq; do
   command -v "$bin" >/dev/null || { printf '\033[31m%s\033[0m\n' "$bin not found on PATH"; sleep 2; exit 1; }
 done
 
-wtjson=$(gren list --format=json 2>/dev/null)
+if ! wtjson=$(gren list --format=json 2>/dev/null); then
+  printf '\033[31m%s\033[0m\n' "gren list failed — is this a gren-managed git repo?"
+  sleep 2
+  exit 1
+fi
 
 # fzf over existing worktree branches; --print-query returns a typed-but-unmatched
 # name so we can create it. Falls back to a plain read if fzf isn't on PATH.
+# Skip detached-HEAD worktrees (empty branch) so they don't show a blank line.
 if command -v fzf >/dev/null; then
   choice=$(
     printf '%s\n' "$wtjson" \
-      | jq -r '.[] | select(.branch != null) | .branch' \
+      | jq -r '.[] | select(.branch != null and .branch != "") | .branch' 2>/dev/null \
       | fzf --print-query --reverse --info=inline --border=rounded --margin=1,2 --padding=0,1 \
             --prompt='switch / create ❯ ' \
             --header='TYPE A NEW NAME → create it   ·   ↵ on a match → switch to it   ·   pr:N/mr:N → check out PR   ·   esc → cancel'
@@ -45,16 +50,17 @@ if [[ -z $wtpath ]]; then
   # No worktree yet → create with gren, but --no-hooks: we run post-create
   # ourselves afterwards in a pane with a real TTY. Flags MUST precede any
   # positional ref — Go's flag parser stops at the first non-flag argument.
-  if gren_is_prref "$name"; then
-    createargs=(create --no-hooks --format=json -y "$name")
-  elif git show-ref --quiet --verify "refs/heads/$name"; then
-    createargs=(create --no-hooks --format=json -y -n "$name" --existing --branch "$name")
-  else
-    # New branch → let the user pick the base (like gren's TUI). esc cancels.
-    base=$(gren_herdr_pick_base "$name")
-    [[ -z $base ]] && exit 0
-    createargs=(create --no-hooks --format=json -y -n "$name" -b "$base")
-  fi
+  case $(gren_herdr_name_kind "$name") in
+    pr)
+      createargs=(create --no-hooks --format=json -y "$name") ;;
+    existing)
+      createargs=(create --no-hooks --format=json -y -n "$name" --existing --branch "$name") ;;
+    *)
+      # New branch → let the user pick the base (like gren's TUI). esc cancels.
+      base=$(gren_herdr_pick_base "$name")
+      [[ -z $base ]] && exit 0
+      createargs=(create --no-hooks --format=json -y -n "$name" -b "$base") ;;
+  esac
 
   if ! result=$(gren "${createargs[@]}"); then
     printf '\n\033[31m%s\033[0m press any key to close' "gren create failed (see above)."
@@ -83,6 +89,14 @@ if [[ -n $root_ws ]]; then
   open=$("$herdr" worktree open --workspace "$root_ws" --path "$wtpath" --label "$name" --focus --json 2>/dev/null)
 else
   open=$("$herdr" worktree open --path "$wtpath" --label "$name" --focus --json 2>/dev/null)
+fi
+
+# Surface a failed registration instead of silently continuing to setup.
+if [[ -z $(printf '%s\n' "$open" | jq -r '.result // empty' 2>/dev/null) ]]; then
+  msg=$(printf '%s\n' "$open" | jq -r '.error.message // empty' 2>/dev/null)
+  printf '\n\033[31m%s\033[0m press any key to close' "herdr worktree open failed: ${msg:-unknown error}"
+  read -rn1
+  exit 1
 fi
 
 # For a freshly created worktree, run gren's post-create setup in a pane with a

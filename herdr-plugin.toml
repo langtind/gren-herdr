@@ -19,13 +19,13 @@ command = ["bash", "-c", "exec bash \"$HERDR_PLUGIN_ROOT/on-created.sh\""]
 id = "open"
 title = "Worktree: switch / create (gren)"
 contexts = ["workspace"]
-command = ["bash", "-c", "cwd=$(jq -r '.workspace_cwd // .focused_pane_cwd' <<<\"$HERDR_PLUGIN_CONTEXT_JSON\"); exec \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint picker --placement split --direction down --cwd \"$cwd\" --focus"]
+command = ["bash", "-c", "cwd=$(jq -r '.workspace_cwd // .focused_pane_cwd // empty' <<<\"$HERDR_PLUGIN_CONTEXT_JSON\"); exec \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint picker --placement split --direction down --cwd \"$cwd\" --focus"]
 
 [[actions]]
 id = "remove"
 title = "Worktree: remove (gren)"
 contexts = ["workspace"]
-command = ["bash", "-c", "cwd=$(jq -r '.workspace_cwd // .focused_pane_cwd' <<<\"$HERDR_PLUGIN_CONTEXT_JSON\"); exec \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint remover --placement split --direction down --cwd \"$cwd\" --focus"]
+command = ["bash", "-c", "cwd=$(jq -r '.workspace_cwd // .focused_pane_cwd // empty' <<<\"$HERDR_PLUGIN_CONTEXT_JSON\"); exec \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint remover --placement split --direction down --cwd \"$cwd\" --focus"]
 
 # Runs the repo's gren post-create setup AS this pane's process, so it gets a
 # real TTY (1Password op, make seed) without racing a shell's startup. The

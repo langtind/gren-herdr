@@ -33,10 +33,12 @@ cd "$wt" || { echo "worktree unavailable: $wt"; exit 0; }
 # The event carries no base ref; post-create only uses it for failure hints.
 echo "🌳 gren post-create setup for ${branch:-?} …"
 echo
-if "$hook" "$wt" "$branch" "" "$repo_root"; then
-	exit 0
-fi
+# Capture the hook's exit code directly. (An `if hook; then …; fi; rc=$?` would
+# read the if-statement's status — 0 when the hook fails and there's no else —
+# so the failure would be reported as success.)
+"$hook" "$wt" "$branch" "" "$repo_root"
 rc=$?
+[[ $rc -eq 0 ]] && exit 0
 # Keep the pane open on failure so the error stays visible for debugging.
 printf '\n\033[31mgren post-create hook failed (exit %s).\033[0m press any key to close\n' "$rc"
 read -rn1 || true

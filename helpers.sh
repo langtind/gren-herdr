@@ -10,6 +10,22 @@ gren_is_prref() {
   esac
 }
 
+# Classify a name typed in the picker into how gren should create it:
+#   pr        → a pr:/mr: reference (gren resolves it)
+#   existing  → an existing local branch (check it out with --existing)
+#   new       → a new branch (create from a chosen base)
+# Runs against the git repo in the current directory for the branch check.
+gren_herdr_name_kind() {
+  local name=$1
+  if gren_is_prref "$name"; then
+    printf 'pr\n'
+  elif git show-ref --quiet --verify "refs/heads/$name"; then
+    printf 'existing\n'
+  else
+    printf 'new\n'
+  fi
+}
+
 # Let the user choose the base branch for a NEW worktree branch, matching gren's
 # TUI. Lists local branches with the recommended default first (main/master, else
 # the current branch) so Enter accepts it. Prints the chosen base, or nothing if
