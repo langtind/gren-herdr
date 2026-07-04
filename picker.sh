@@ -23,8 +23,8 @@ if command -v fzf >/dev/null; then
     printf '%s\n' "$wtjson" \
       | jq -r '.[] | select(.branch != null) | .branch' \
       | fzf --print-query --reverse --info=inline --border=rounded --margin=1,2 --padding=0,1 \
-            --prompt='gren worktree ❯ ' \
-            --header='↵ match → open · type new name + ↵ → create · pr:N/mr:N → PR · esc → cancel'
+            --prompt='switch / create ❯ ' \
+            --header='TYPE A NEW NAME → create it   ·   ↵ on a match → switch to it   ·   pr:N/mr:N → check out PR   ·   esc → cancel'
   )
   ret=$?
   [[ $ret -gt 1 ]] && exit 0      # 130 = esc/abort → cancel (0 = picked, 1 = typed-new)
