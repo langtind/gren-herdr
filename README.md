@@ -31,10 +31,11 @@ output). Either way your env files, deps, and hooks are set up automatically —
 no extra step.
 
 **2. A gren-driven switch/create picker** (`gren.open`): an fzf picker over your
-worktrees. Press `Enter` on a match to open it, or type a new name and press
-`Enter` to create it with gren. Typing `pr:42` or `mr:7` checks out that
-PR/MR branch. gren's post-create hooks run during creation, and the checkout
-opens as a native herdr worktree workspace.
+worktrees. Press `Enter` on a match to switch to it, or type a new name and press
+`Enter` to create it — you then pick a **base branch** (defaulting to
+main/master, else the current branch, like gren's TUI). Typing `pr:42` or `mr:7`
+checks out that PR/MR branch. The worktree is created at gren's configured
+`worktree_dir`, and its post-create setup runs in a pane with a real TTY (see #1).
 
 **3. A remove picker** (`gren.remove`): an fzf picker over removable worktrees
 (everything except the main checkout). Pick one; gren prompts for confirmation

@@ -50,7 +50,10 @@ if [[ -z $wtpath ]]; then
   elif git show-ref --quiet --verify "refs/heads/$name"; then
     createargs=(create --no-hooks --format=json -y -n "$name" --existing --branch "$name")
   else
-    createargs=(create --no-hooks --format=json -y -n "$name")
+    # New branch → let the user pick the base (like gren's TUI). esc cancels.
+    base=$(gren_herdr_pick_base "$name")
+    [[ -z $base ]] && exit 0
+    createargs=(create --no-hooks --format=json -y -n "$name" -b "$base")
   fi
 
   if ! result=$(gren "${createargs[@]}"); then
