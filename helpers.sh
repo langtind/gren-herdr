@@ -68,9 +68,13 @@ gren_herdr_pick_base() {
 gren_herdr_open_setup_pane() {
   local herdr=$1 plugin_id=$2 target=$3 wt=$4 branch=$5 repo_root=$6
   [[ -n $repo_root && -d "$repo_root/.gren" && -n $target ]] || return 1
+  # Focus the setup pane: it runs `gren hook-run --interactive`, which prompts
+  # for approval and may run hooks that need input (a TTY). An unfocused split
+  # pane isn't painted or given keystrokes until focused, so opening it
+  # --no-focus left the approval prompt invisible until the user clicked in.
   "$herdr" plugin pane open \
     --plugin "$plugin_id" --entrypoint bootstrap \
-    --target-pane "$target" --placement split --direction down --cwd "$wt" --no-focus \
+    --target-pane "$target" --placement split --direction down --cwd "$wt" --focus \
     --env "GREN_HERDR_WORKTREE=$wt" \
     --env "GREN_HERDR_BRANCH=$branch" \
     --env "GREN_HERDR_REPO_ROOT=$repo_root" \
