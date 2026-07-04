@@ -174,6 +174,11 @@ The plugin is a manifest plus small bash scripts:
 - `helpers.sh` — shared shell helpers (pr:/mr: detection)
 - `tests/helpers_test.sh` — helper function checks
 
+See [`docs/debugging.md`](docs/debugging.md) for a field guide to diagnosing
+gren ↔ herdr issues: the two creation paths, the event model, how to test a gren
+build locally without a release, reproducing TTY-only bugs, and a
+failure-signature table.
+
 Run the tests:
 
 ```bash
