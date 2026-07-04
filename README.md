@@ -22,13 +22,18 @@ resulting worktrees.
 
 **1. gren runs on every worktree herdr creates.** herdr emits `worktree.created`
 from its built-in UI — including the repo **right-click → "New worktree"** menu
-and the `prefix+shift+g` dialog. This plugin listens for that event and runs your
-repo's `.gren/post-create.sh` **in the new worktree's own pane** — a real TTY, so
-interactive setup (1Password `op` biometric unlock, `make seed`) and live,
-uncapped output work, with the worktree's own direnv-loaded shell. When there's
-no hook script or no pane, it falls back to `gren hook-run` inline (captured
-output). Either way your env files, deps, and hooks are set up automatically —
-no extra step.
+and the `prefix+shift+g` dialog. This plugin listens for that event and runs
+**gren's full post-create hook config** — inline commands, script hooks, named
+hooks with branch filters, and user-level hooks — **in the new worktree's own
+pane** via `gren hook-run --interactive`. That's a real TTY, so interactive setup
+(1Password `op` biometric unlock, `make seed`) and live, uncapped output work,
+with the worktree's own direnv-loaded shell; hooks are approved once per project
+(then remembered), and per-worktree template values like
+`{{ branch | hash_port }}` resolve. The pane also badges the worktree with its
+deterministic dev **port** so you can tell which worktree owns which. When
+there's no pane, it falls back to `gren hook-run` inline (captured output).
+Either way your env files, deps, and hooks are set up automatically — no extra
+step. Requires **gren ≥ 0.15.0** for `--interactive`.
 
 **2. A gren-driven switch/create picker** (`gren.open`): an fzf picker over your
 worktrees. Press `Enter` on a match to switch to it, or type a new name and press
@@ -120,13 +125,20 @@ herdr server reload-config
 
 ## Notes
 
-- **TTY / interactive setup.** gren runs *simple* post-create hooks with captured
-  stdio (no TTY), and herdr's `worktree.created` event is detached — so an inline
-  hook can't give an interactive tool a terminal. To fix that, when your repo has
-  a `.gren/post-create.sh`, the event dispatches it into the new worktree's pane
-  (`herdr pane run`), where it inherits a real TTY. If you rely on a custom hook
-  *command* (not the script) that needs a TTY, mark it `interactive = true` as a
-  named hook, or keep it in `.gren/post-create.sh`.
+- **TTY / interactive setup.** gren normally runs post-create hooks with captured
+  stdio (no TTY), and herdr's `worktree.created` event is detached — so hooks
+  can't give an interactive tool a terminal on their own. To fix that, the setup
+  pane runs `gren hook-run --interactive`, which forces every configured hook
+  (inline, script, named, user-level) to inherit the pane's real TTY — no need to
+  mark hooks `interactive = true` or keep them in `.gren/post-create.sh`. Because
+  a human is at the terminal, `--interactive` also prompts for hook approval the
+  first time (remembered per project). Requires gren ≥ 0.15.0.
+- **Per-worktree ports / DBs.** Use `{{ branch | hash_port }}` (a deterministic
+  port in 10000–19999) and `{{ branch | sanitize_db }}` in your hooks to give each
+  worktree its own dev server port and database, so parallel worktrees don't
+  collide. The setup pane badges the worktree pane with its resolved port. Note:
+  `hash_port` can *rarely* collide (two branches → same port); if that bites,
+  derive the port with `gren step eval` and probe for the next free one.
 - **Branch on auto-setup.** herdr's `worktree.created` event carries the new
   checkout path but not the branch name, so the setup hook recovers the branch
   from git (`git symbolic-ref --short HEAD`). Your post-create hook receives it

@@ -55,6 +55,29 @@ printf '#!/usr/bin/env bash\nhead -1\n' >"$_stub/fzf"
 chmod +x "$_stub/fzf"
 check_eq "pick_base default = main" "main" "$(PATH="$_stub:$PATH" gren_herdr_pick_base 'x')"
 
+# gren_herdr_open_setup_pane gates on the repo being gren-configured (a .gren dir)
+# and a target pane, before invoking herdr. Guard cases need no herdr at all.
+gren_herdr_open_setup_pane "true" "gren" "pane1" "$_repo" "main" "$_repo"
+check "open_setup_pane: no .gren dir → skip" 1 $?
+
+mkdir -p "$_repo/.gren"
+gren_herdr_open_setup_pane "true" "gren" "" "$_repo" "main" "$_repo"
+check "open_setup_pane: no target pane → skip" 1 $?
+
+# Success path: stub herdr records its args so we can assert the target-pane env
+# (used for the port badge) is plumbed through.
+cat >"$_stub/herdr" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >"$HSTUB_OUT"
+exit 0
+STUB
+chmod +x "$_stub/herdr"
+export HSTUB_OUT="$_stub/args"
+gren_herdr_open_setup_pane "$_stub/herdr" "gren" "pane1" "$_repo" "main" "$_repo"
+check "open_setup_pane: gren repo + target → open" 0 $?
+grep -q -- "GREN_HERDR_TARGET_PANE=pane1" "$_stub/args"
+check "open_setup_pane: plumbs target-pane env" 0 $?
+
 cd "$_orig" || exit 1
 rm -rf "$_repo" "$_stub"
 
