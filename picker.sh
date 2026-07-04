@@ -22,7 +22,7 @@ if command -v fzf >/dev/null; then
   choice=$(
     printf '%s\n' "$wtjson" \
       | jq -r '.[] | select(.branch != null) | .branch' \
-      | fzf --print-query --reverse --info=inline --border=rounded --margin=20%,30% \
+      | fzf --print-query --reverse --info=inline --border=rounded --margin=1,2 --padding=0,1 \
             --prompt='gren worktree ❯ ' \
             --header='↵ match → open · type new name + ↵ → create · pr:N/mr:N → PR · esc → cancel'
   )
