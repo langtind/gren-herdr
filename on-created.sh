@@ -3,11 +3,11 @@
 # worktree that herdr just created — via the native "New worktree" dialog, the
 # repo right-click menu, or `herdr worktree create`.
 #
-# Preferred path: run the repo's `.gren/post-create.sh` IN the new worktree's own
-# pane (via `herdr pane run`) so setup gets a real TTY (interactive tools like
-# 1Password `op` biometric unlock, `make seed`), live uncapped output, and the
-# worktree's own direnv-loaded shell env. gren runs *simple* hooks with captured
-# stdio (no TTY), so a detached event hook can't provide one — the pane can.
+# Preferred path: open a dedicated "bootstrap" pane whose process is the repo's
+# `.gren/post-create.sh` (see bootstrap.sh), split below the new worktree's shell.
+# A pane's command runs with a real, user-visible TTY (interactive tools like
+# 1Password `op`, `make seed`), so setup works even though the event is detached.
+# Shared with the picker via gren_herdr_open_setup_pane in helpers.sh.
 #
 # Fallbacks: when no `.gren/post-create.sh` exists (e.g. a custom hook command)
 # or no pane is available, run `gren hook-run` inline. That respects the full
@@ -17,6 +17,10 @@ set -uo pipefail
 
 command -v gren >/dev/null || { echo "gren not on PATH; skipping post-create setup"; exit 0; }
 command -v jq   >/dev/null || { echo "jq not on PATH; skipping post-create setup"; exit 0; }
+
+plugin_root=${HERDR_PLUGIN_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)}
+# shellcheck source=./helpers.sh
+source "$plugin_root/helpers.sh"
 
 ctx=${HERDR_PLUGIN_CONTEXT_JSON:-}
 [[ -z $ctx ]] && ctx='{}'
@@ -49,28 +53,16 @@ if [[ -z $repo_root ]]; then
 fi
 
 herdr=${HERDR_BIN_PATH:-herdr}
-# The new worktree's root pane (the event's workspace focused pane) — we split it
-# so setup shows right below the worktree's own shell.
+# The new worktree's root pane (the event's workspace focused pane) — split it so
+# setup shows right below the worktree's own shell.
 target=$(jq -r '.focused_pane_id // empty' <<<"$ctx")
-hook="$repo_root/.gren/post-create.sh"
 
-# Preferred: run the hook AS a dedicated pane process split below the new
-# worktree's shell. A pane's command runs with a real, user-visible TTY (like the
-# picker's fzf), so 1Password `op` / `make seed` work and output is live and
-# uncapped — and because it's a spawned process (not text typed into a shell)
-# there's no shell-startup race. See bootstrap.sh.
-if [[ -n $repo_root && -x $hook && -n $target ]]; then
-	if "$herdr" plugin pane open \
-		--plugin "${HERDR_PLUGIN_ID:-gren}" --entrypoint bootstrap \
-		--target-pane "$target" --placement split --direction down --cwd "$path" --no-focus \
-		--env "GREN_HERDR_WORKTREE=$path" \
-		--env "GREN_HERDR_BRANCH=$branch" \
-		--env "GREN_HERDR_REPO_ROOT=$repo_root" >/dev/null 2>&1; then
-		echo "opened gren setup pane below $target (branch=${branch:-?})"
-		exit 0
-	fi
-	echo "plugin pane open failed; falling back to inline"
+# Preferred: run the hook as a dedicated pane process with a real TTY.
+if gren_herdr_open_setup_pane "$herdr" "${HERDR_PLUGIN_ID:-gren}" "$target" "$path" "$branch" "$repo_root"; then
+	echo "opened gren setup pane below $target (branch=${branch:-?})"
+	exit 0
 fi
+echo "plugin pane open unavailable; falling back to inline"
 
 # Fallback: run gren's configured post-create hooks inline (captured output, no
 # TTY). Covers custom hook commands, the no-workspace case, and pane-open errors;

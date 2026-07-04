@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Picker for the gren herdr plugin. fzf over existing gren worktrees; press Enter
-# on a match to open it, or type a new name (or pr:<n>/mr:<n>) and press Enter to
-# create it with gren — so gren's post-create setup (env, deps, hooks) runs — then
-# register the resulting checkout as a native herdr worktree workspace.
+# on a match to switch to it, or type a new name (or pr:<n>/mr:<n>) and press
+# Enter to create it with gren (at gren's configured worktree_dir). New worktrees
+# are created with --no-hooks and then set up in a dedicated pane with a real TTY
+# (so 1Password op / make seed work) — see gren_herdr_open_setup_pane.
 set -uo pipefail
 
 herdr=${HERDR_BIN_PATH:-herdr}
@@ -39,15 +40,17 @@ fi
 wtpath=$(printf '%s\n' "$wtjson" \
   | jq -r --arg b "$name" '.[] | select(.branch == $b) | .path' | head -n1)
 
+created=""
 if [[ -z $wtpath ]]; then
-  # No worktree yet → create with gren. Flags MUST precede any positional ref:
-  # Go's flag parser stops at the first non-flag argument.
+  # No worktree yet → create with gren, but --no-hooks: we run post-create
+  # ourselves afterwards in a pane with a real TTY. Flags MUST precede any
+  # positional ref — Go's flag parser stops at the first non-flag argument.
   if gren_is_prref "$name"; then
-    createargs=(create --format=json -y "$name")
+    createargs=(create --no-hooks --format=json -y "$name")
   elif git show-ref --quiet --verify "refs/heads/$name"; then
-    createargs=(create --format=json -y -n "$name" --existing --branch "$name")
+    createargs=(create --no-hooks --format=json -y -n "$name" --existing --branch "$name")
   else
-    createargs=(create --format=json -y -n "$name")
+    createargs=(create --no-hooks --format=json -y -n "$name")
   fi
 
   if ! result=$(gren "${createargs[@]}"); then
@@ -56,6 +59,7 @@ if [[ -z $wtpath ]]; then
     exit 1
   fi
   wtpath=$(printf '%s\n' "$result" | jq -r '.path // empty')
+  created=1
 fi
 
 if [[ -z $wtpath ]]; then
@@ -73,6 +77,19 @@ root_ws=$("$herdr" worktree list --cwd "$PWD" --json 2>/dev/null \
 [[ -z $root_ws ]] && root_ws=${HERDR_WORKSPACE_ID:-}
 
 if [[ -n $root_ws ]]; then
-  exec "$herdr" worktree open --workspace "$root_ws" --path "$wtpath" --label "$name" --focus --json
+  open=$("$herdr" worktree open --workspace "$root_ws" --path "$wtpath" --label "$name" --focus --json 2>/dev/null)
+else
+  open=$("$herdr" worktree open --path "$wtpath" --label "$name" --focus --json 2>/dev/null)
 fi
-exec "$herdr" worktree open --path "$wtpath" --label "$name" --focus --json
+
+# For a freshly created worktree, run gren's post-create setup in a pane with a
+# real TTY (we created with --no-hooks). Switching to an existing worktree needs
+# no setup — it already ran when that worktree was created.
+if [[ -n $created ]]; then
+  root_pane=$(printf '%s\n' "$open" | jq -r '.result.root_pane.pane_id // empty')
+  branch=$(git -C "$wtpath" symbolic-ref --quiet --short HEAD 2>/dev/null || echo "$name")
+  repo_root=$(git -C "$wtpath" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+  [[ -n $repo_root ]] && repo_root=$(cd "$repo_root/.." 2>/dev/null && pwd)
+  gren_herdr_open_setup_pane "$herdr" "${HERDR_PLUGIN_ID:-gren}" "$root_pane" "$wtpath" "$branch" "$repo_root" \
+    || { cd "$wtpath" 2>/dev/null && exec gren hook-run --type post-create --path "$wtpath" --branch "$branch"; }
+fi
