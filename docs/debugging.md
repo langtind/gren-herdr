@@ -108,6 +108,7 @@ export XDG_DATA_HOME=$(mktemp -d) HOME=$(mktemp -d)
 | Bootstrap pane blank until you press a key / click | pane opened `--no-focus`; herdr doesn't paint/route input to an unfocused split | gren-herdr `59a892f` (setup pane opens `--focus`) |
 | `direnv: unloading` on every worktree shell | herdr inherited stale `DIRENV_*` env from its launch dir — benign, cosmetic | (not a gren bug) |
 | "Press Enter to finish setup" in the test repo | the **test repo's** `post-create.sh` has an artificial `read` prompt to demo TTY — not the plugin | (test artifact) |
+| `make seed` / any `op`-gated setup **silently skipped** on worktree create inside herdr — DBs migrated but empty (no seed data) | the consumer repo's `post-create.sh` gated the step on `op whoami`, a **false negative** under 1Password desktop integration (no CLI session token; per-command TouchID) and *always* non-zero inside herdr, whose launchd-reparented server loses macOS responsible-process attribution ([herdr#808](https://github.com/ogulcancelik/herdr/issues/808)) so 1Password never persists "Always Allow". `op run` (what `make seed` uses) still works | consumer hook, not gren/plugin — don't gate on `op whoami`; attempt the step and treat op failure as non-fatal. Reference fix: flyt `.gren/post-create.sh` ([agensdev/flyt#1282](https://github.com/agensdev/flyt/pull/1282)) |
 
 ## Recurring gotchas
 
