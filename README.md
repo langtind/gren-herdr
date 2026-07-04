@@ -124,6 +124,18 @@ Reload the config after editing it:
 herdr server reload-config
 ```
 
+## Removing worktrees
+
+Delete gren worktrees with **`prefix+shift+d`** (the `gren.remove` action), **not
+herdr's sidebar**. `gren.remove` runs `gren delete`, which fires gren's
+`pre-remove` and `post-remove` hooks while the worktree still exists — so
+per-worktree teardown (databases, k8s namespaces, allocated ports) runs and the
+delete aborts cleanly if the worktree is dirty.
+
+herdr's native sidebar delete removes the worktree directly and does **not** run
+gren's removal hooks (the plugin only subscribes to `worktree.created`). On a
+project with per-worktree resources that means orphaned databases/namespaces/ports.
+
 ## Notes
 
 - **TTY / interactive setup.** gren normally runs post-create hooks with captured
