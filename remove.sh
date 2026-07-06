@@ -43,6 +43,14 @@ if [[ -n $wtpath ]]; then
     | head -n1)
 fi
 
+# Run the delete from the main checkout: gren reads .gren/config.toml relative
+# to cwd, so a worktree pane would hand gren its branch's stale copy of the
+# hook config — and if cwd is the worktree being removed, it vanishes under us.
+mainpath=$(printf '%s\n' "$wtjson" | jq -r '.[] | select(.is_main == true) | .path // empty' | head -n1)
+if [[ -n $mainpath && -d $mainpath ]]; then
+  cd "$mainpath" || true # best-effort — worst case gren reads the pane cwd's config
+fi
+
 # gren delete prompts (y/N), refuses without confirmation, and runs pre-remove hooks.
 # `--` guards a branch name that begins with '-'.
 if ! gren delete -- "$name"; then
