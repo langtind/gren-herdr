@@ -56,7 +56,10 @@ echo
 gren hook-run --type post-create --path "$wt" --branch "$branch" --base "" --interactive
 rc=$?
 [[ $rc -eq 0 ]] && exit 0
-# Keep the pane open on failure so the error stays visible for debugging.
-printf '\n\033[31mgren post-create hook failed (exit %s).\033[0m press any key to close\n' "$rc"
+# Keep the pane open on failure so the error stays visible for debugging, and
+# point at the on-disk capture so the cause is recoverable after the pane closes.
+printf '\n\033[31mgren post-create hook failed (exit %s).\033[0m\n' "$rc"
+printf 'Full output saved — run: \033[36mgren logs --last\033[0m\n'
+printf 'press any key to close\n'
 read -rn1 || true
 exit "$rc"
