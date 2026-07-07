@@ -77,19 +77,14 @@ if [[ -z $wtpath ]]; then
   exit 1
 fi
 
-# Register under the repo's ROOT workspace, not the picker pane's current
-# workspace. Run from inside an existing worktree workspace and `worktree open`
-# rejects it with `linked_worktree_source`; herdr resolves the repo root from any
-# checkout cwd via .result.source.source_workspace_id, so prefer that.
-root_ws=$("$herdr" worktree list --cwd "$PWD" --json 2>/dev/null \
-  | jq -r '.result.source.source_workspace_id // empty')
-[[ -z $root_ws ]] && root_ws=${HERDR_WORKSPACE_ID:-}
-
-if [[ -n $root_ws ]]; then
-  open=$("$herdr" worktree open --workspace "$root_ws" --path "$wtpath" --label "$name" --focus --json 2>/dev/null)
-else
-  open=$("$herdr" worktree open --path "$wtpath" --label "$name" --focus --json 2>/dev/null)
-fi
+# Register the worktree under the repo's ROOT workspace. Opening from inside a
+# linked worktree is rejected, and this herdr no longer exposes a workspace id in
+# `worktree list` (.result.source has no source_workspace_id) — so resolve the
+# MAIN checkout and pass it as --cwd, letting herdr map it to the root workspace.
+main_root=$(git -C "$PWD" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+[[ -n $main_root ]] && main_root=$(cd "$main_root/.." 2>/dev/null && pwd)
+[[ -z $main_root ]] && main_root=$PWD
+open=$("$herdr" worktree open --cwd "$main_root" --path "$wtpath" --label "$name" --focus --json 2>/dev/null)
 
 # Surface a failed registration instead of silently continuing to setup.
 if [[ -z $(printf '%s\n' "$open" | jq -r '.result // empty' 2>/dev/null) ]]; then
