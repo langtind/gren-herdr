@@ -84,12 +84,29 @@ fi
 main_root=$(git -C "$PWD" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
 [[ -n $main_root ]] && main_root=$(cd "$main_root/.." 2>/dev/null && pwd)
 [[ -z $main_root ]] && main_root=$PWD
-open=$("$herdr" worktree open --cwd "$main_root" --path "$wtpath" --label "$name" --focus --json 2>/dev/null)
+# Keep the CLI's stderr: a client-side failure (dead socket, arg rejection)
+# never reaches the herdr server log, so what the CLI prints here is the only
+# surviving trace of WHY registration failed.
+herdr_stderr=$(mktemp)
+open=$("$herdr" worktree open --cwd "$main_root" --path "$wtpath" --label "$name" --focus --json 2>"$herdr_stderr")
+open_err=$(<"$herdr_stderr")
+rm -f "$herdr_stderr"
 
 # Surface a failed registration instead of silently continuing to setup.
 if [[ -z $(printf '%s\n' "$open" | jq -r '.result // empty' 2>/dev/null) ]]; then
   msg=$(printf '%s\n' "$open" | jq -r '.error.message // empty' 2>/dev/null)
-  printf '\n\033[31m%s\033[0m press any key to close' "herdr worktree open failed: ${msg:-unknown error}"
+  printf '\n\033[31m%s\033[0m\n' "herdr worktree open failed: ${msg:-${open_err:-unknown error}}"
+  # A freshly created worktree still needs its post-create setup — this pane
+  # has the real TTY, so run it here rather than leave a half-set-up worktree
+  # behind. Registration in the sidebar can be retried from the picker later.
+  if [[ -n $created ]]; then
+    branch=$(git -C "$wtpath" symbolic-ref --quiet --short HEAD 2>/dev/null || echo "$name")
+    printf '\033[33m%s\033[0m\n\n' "worktree was created — running post-create setup here instead."
+    if ! (cd "$wtpath" && gren hook-run --type post-create --path "$wtpath" --branch "$branch" --base "" --interactive); then
+      printf '\n\033[31m%s\033[0m\n' "post-create hook failed — run: gren logs --last"
+    fi
+  fi
+  printf '\n%s' "press any key to close"
   read -rn1
   exit 1
 fi
