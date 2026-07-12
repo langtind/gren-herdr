@@ -67,13 +67,29 @@ if [[ -z $wtpath ]]; then
     read -rn1
     exit 1
   fi
-  wtpath=$(printf '%s\n' "$result" | jq -r '.path // empty')
+  wtpath=$(printf '%s\n' "$result" | jq -r '.path // empty' 2>/dev/null)
   created=1
+
+  # create exited 0 but stdout wasn't parseable JSON (gren < 0.18.1 printed the
+  # unpushed-commits warning ahead of the payload). The worktree EXISTS at this
+  # point — aborting here strands it with no registration and no setup. Recover
+  # its path from gren list. pr:/mr: refs are excluded: the created branch name
+  # isn't the typed ref, so there is nothing to look the path up by.
+  if [[ -z $wtpath ]] && ! gren_is_prref "$name"; then
+    wtpath=$(gren_herdr_worktree_path_for_branch "$name")
+    [[ -n $wtpath ]] && printf '\033[33m%s\033[0m\n' \
+      "gren create output was not parseable JSON — recovered worktree path from gren list."
+  fi
 fi
 
 if [[ -z $wtpath ]]; then
   printf '\033[31m%s\033[0m\n' "gren returned no worktree path for: $name"
-  sleep 2
+  if [[ -n ${result:-} ]]; then
+    printf '%s\n' "--- gren create output ---"
+    printf '%s\n' "$result" | head -5
+  fi
+  printf '\n%s' "press any key to close"
+  read -rn1
   exit 1
 fi
 

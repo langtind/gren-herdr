@@ -78,6 +78,21 @@ check "open_setup_pane: gren repo + target → open" 0 $?
 grep -q -- "GREN_HERDR_TARGET_PANE=pane1" "$_stub/args"
 check "open_setup_pane: plumbs target-pane env" 0 $?
 
+# gren_herdr_worktree_path_for_branch resolves a branch's worktree path via
+# `gren list --format=json` (stubbed here) — the picker's recovery when create
+# succeeded but its stdout wasn't parseable JSON.
+cat >"$_stub/gren" <<'STUB'
+#!/usr/bin/env bash
+[[ "$1" == "list" ]] || exit 1
+printf '[{"branch":"feat/a","path":"/tmp/wt-a"},{"branch":"main","path":"/tmp/main-wt"}]\n'
+STUB
+chmod +x "$_stub/gren"
+check_eq "path_for_branch: match → path"     "/tmp/wt-a" "$(PATH="$_stub:$PATH" gren_herdr_worktree_path_for_branch 'feat/a')"
+check_eq "path_for_branch: unknown → empty"  ""          "$(PATH="$_stub:$PATH" gren_herdr_worktree_path_for_branch 'nope')"
+
+printf '#!/usr/bin/env bash\nexit 1\n' >"$_stub/gren"
+check_eq "path_for_branch: gren failure → empty" "" "$(PATH="$_stub:$PATH" gren_herdr_worktree_path_for_branch 'feat/a')"
+
 cd "$_orig" || exit 1
 rm -rf "$_repo" "$_stub"
 

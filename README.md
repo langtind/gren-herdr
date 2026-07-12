@@ -173,6 +173,7 @@ The plugin is a manifest plus small bash scripts:
 - `remove.sh` — the remove picker + workspace cleanup
 - `helpers.sh` — shared shell helpers (pr:/mr: detection)
 - `tests/helpers_test.sh` — helper function checks
+- `tests/picker_test.sh` — end-to-end picker run against stubbed gren/fzf/herdr
 
 See [`docs/debugging.md`](docs/debugging.md) for a field guide to diagnosing
 gren ↔ herdr issues: the two creation paths, the event model, how to test a gren
@@ -183,6 +184,7 @@ Run the tests:
 
 ```bash
 bash tests/helpers_test.sh
+bash tests/picker_test.sh
 ```
 
 herdr caches the manifest when a plugin is linked, so after editing

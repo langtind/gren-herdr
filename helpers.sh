@@ -55,6 +55,18 @@ gren_herdr_pick_base() {
   fi
 }
 
+# Print the worktree path gren has recorded for a branch, or nothing. The
+# picker's recovery for when `gren create --format=json` exits 0 but its stdout
+# isn't parseable JSON (gren < 0.18.1 printed the unpushed-commits warning on
+# stdout ahead of the payload): the worktree exists at that point, so its path
+# is recoverable from `gren list` instead of abandoning setup.
+#   $1 = branch name
+gren_herdr_worktree_path_for_branch() {
+  gren list --format=json 2>/dev/null \
+    | jq -r --arg b "$1" '.[] | select(.branch == $b) | .path // empty' 2>/dev/null \
+    | head -n1
+}
+
 # Open the "bootstrap" plugin pane, which runs gren's configured post-create
 # hooks via `gren hook-run --interactive` with a real, user-visible TTY
 # (1Password op, make seed) split below the new worktree's shell. Both the
