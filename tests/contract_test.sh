@@ -118,6 +118,54 @@ else
   else
     skips "herdr workspace report-metadata" "inconclusive: $(printf '%s' "$out" | head -c 120)"
   fi
+
+  # worktree open — picker.sh's registration step, and the plugin's single most
+  # load-bearing herdr call. Point it at a path outside any git work tree: the
+  # 'not_git_worktree' rejection happens AFTER flag parsing, so it proves every
+  # flag survives while opening nothing.
+  out=$("$herdr" worktree open --cwd /nonexistent-contract-test --path /nonexistent-contract-test \
+          --label ct --focus --json 2>&1 || true)
+  if printf '%s' "$out" | grep -qiE 'not_git_worktree|not found|no such'; then
+    ok "herdr worktree open --cwd/--path/--label/--focus/--json parse"
+  elif printf '%s' "$out" | grep -qi 'unknown option'; then
+    bad "herdr worktree open rejects a flag picker.sh passes" "got: $out — worktree registration breaks"
+  else
+    skips "herdr worktree open flags" "inconclusive: $(printf '%s' "$out" | head -c 120)"
+  fi
+
+  # worktree list → .result.worktrees[].open_workspace_id — remove.sh resolves the
+  # herdr workspace to close from this. herdr has dropped a neighbouring field
+  # here before (source_workspace_id), which broke the picker; this is read-only,
+  # so assert the shape against the real repo we are running in.
+  if wl=$("$herdr" worktree list --cwd "$PWD" --json 2>/dev/null) \
+     && printf '%s' "$wl" | jq -e '.result.worktrees' >/dev/null 2>&1; then
+    shape=$(printf '%s' "$wl" | jq -r '
+      if (.result.worktrees | length) == 0 then "empty"
+      elif (.result.worktrees[0] | has("path") and has("open_workspace_id")) then "ok"
+      else "missing-keys" end' 2>/dev/null)
+    case $shape in
+      ok)    ok "herdr worktree list → .worktrees[] with .path/.open_workspace_id" ;;
+      empty) skips "herdr worktree list shape" "no worktrees registered here" ;;
+      *)     bad "herdr worktree list dropped .path/.open_workspace_id" "got: $shape — remove.sh cannot find the workspace to close" ;;
+    esac
+  else
+    bad "herdr worktree list --cwd --json failed or is not the expected envelope" "remove.sh's workspace cleanup breaks"
+  fi
+
+  # plugin pane open — how every setup pane and picker is launched (helpers.sh).
+  # A bogus entrypoint fails AFTER the rest of the flags parse, so the whole flag
+  # set is validated without actually opening a pane.
+  out=$("$herdr" plugin pane open --plugin "${HERDR_PLUGIN_ID:-gren}" --entrypoint no-such-entrypoint-ct \
+          --target-pane ct:p0 --placement split --direction down --cwd /tmp --focus --env "CT=1" 2>&1 || true)
+  if printf '%s' "$out" | grep -qi 'plugin_pane_not_found'; then
+    ok "herdr plugin pane open --target-pane/--placement/--direction/--cwd/--focus/--env parse"
+  elif printf '%s' "$out" | grep -qi 'plugin_not_found'; then
+    skips "herdr plugin pane open flags" "plugin '${HERDR_PLUGIN_ID:-gren}' not linked; run: herdr plugin link \$PWD"
+  elif printf '%s' "$out" | grep -qi 'unknown option'; then
+    bad "herdr plugin pane open rejects a flag helpers.sh passes" "got: $out — setup panes and pickers break"
+  else
+    skips "herdr plugin pane open flags" "inconclusive: $(printf '%s' "$out" | head -c 120)"
+  fi
 fi
 
 printf '\n%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"
