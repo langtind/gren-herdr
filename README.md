@@ -48,7 +48,11 @@ checks out that PR/MR branch. The worktree is created at gren's configured
 
 **3. A remove picker** (`gren.remove`): an fzf picker over removable worktrees
 (everything except the main checkout). Pick one; gren prompts for confirmation
-and runs its pre-remove hooks, then the associated herdr workspace is closed.
+and runs its pre-remove hooks, then the associated herdr workspace is closed. On
+**herdr ≥ 0.7.4** it opens as a session-modal **popup**, which leaves the tiled
+layout untouched — a picker you answer and dismiss has no business rearranging
+your panes. herdr ≤ 0.7.3 has no popup placement (it errors with `invalid pane
+placement`), so the action retries as a split there.
 
 > **Note on the right-click menu:** herdr's right-click "New worktree" item is
 > hardwired to herdr's own create flow, so this plugin can't *replace* it — but

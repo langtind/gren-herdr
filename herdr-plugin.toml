@@ -21,11 +21,15 @@ title = "Worktree: switch / create (gren)"
 contexts = ["workspace"]
 command = ["bash", "-c", "cwd=$(jq -r '.workspace_cwd // .focused_pane_cwd // empty' <<<\"$HERDR_PLUGIN_CONTEXT_JSON\"); exec \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint picker --placement split --direction down --cwd \"$cwd\" --focus"]
 
+# Opens as a session-modal popup on herdr >= 0.7.4: a picker you answer and
+# dismiss shouldn't rearrange the tiled layout. herdr <= 0.7.3 has no popup
+# placement and errors with "invalid pane placement" — so fall back to the split
+# it used before, rather than failing to open at all.
 [[actions]]
 id = "remove"
 title = "Worktree: remove (gren)"
 contexts = ["workspace"]
-command = ["bash", "-c", "cwd=$(jq -r '.workspace_cwd // .focused_pane_cwd // empty' <<<\"$HERDR_PLUGIN_CONTEXT_JSON\"); exec \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint remover --placement split --direction down --cwd \"$cwd\" --focus"]
+command = ["bash", "-c", "cwd=$(jq -r '.workspace_cwd // .focused_pane_cwd // empty' <<<\"$HERDR_PLUGIN_CONTEXT_JSON\"); \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint remover --placement popup --width 80% --height 60% --cwd \"$cwd\" --focus >/dev/null 2>&1 || exec \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint remover --placement split --direction down --cwd \"$cwd\" --focus"]
 
 # Runs the repo's gren post-create setup AS this pane's process, so it gets a
 # real TTY (1Password op, make seed) without racing a shell's startup. The
@@ -42,6 +46,12 @@ title = "gren"
 placement = "split"
 command = ["bash", "-c", "exec bash \"$HERDR_PLUGIN_ROOT/picker.sh\""]
 
+# Stays "split" deliberately. The remove action opens this as a popup on herdr
+# >= 0.7.4 by passing --placement explicitly (an open request overrides the
+# manifest). Declaring popup HERE would risk herdr <= 0.7.3 rejecting the whole
+# manifest — it errors with "invalid pane placement: popup" — which would take
+# the entire plugin down, not just the popup. This value is the safe default for
+# an open request that passes no placement.
 [[panes]]
 id = "remover"
 title = "gren — remove"
