@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Upstream drift happens on gren's release schedule, not on ours: the plugin
+  # can break with nothing changed here. Run weekly so a gren release that
+  # violates our assumptions surfaces on its own, not on whoever pushes next.
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
 
 jobs:
   test:
@@ -11,16 +17,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install shellcheck
+      - name: Install shellcheck + jq
         run: sudo apt-get update && sudo apt-get install -y shellcheck jq
 
       - name: Shellcheck
         run: shellcheck *.sh tests/*.sh
 
-      # gren and herdr are not installed here, so contract_test.sh skips its
-      # binary probes (green). The stub suites run fully. Installing gren
-      # (`go install github.com/langtind/gren@latest`) and herdr would activate
-      # the real contract assertions — worth doing once their CI installs are
-      # stable.
+      # Real gren, tracking @latest deliberately. Pinning would defeat the
+      # point: contract_test.sh exists to notice when gren's JSON or CLI stops
+      # matching what these scripts assume, and it only notices against the
+      # version users actually get. A red build here means upstream moved —
+      # which is the alert, not a false alarm.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Install gren (latest release)
+        run: |
+          go install github.com/langtind/gren@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Show versions
+        run: gren --version || true
+
+      # herdr is deliberately absent: its CLI talks to a running server over a
+      # unix socket, so with no session there is nothing to probe and the herdr
+      # contracts would be noise. contract_test.sh skips them by design and
+      # still asserts every gren contract. The herdr half is covered locally —
+      # see README "Development".
+      # CONTRACT_REQUIRE=gren makes a missing gren a failure rather than a skip:
+      # otherwise a broken `go install` above would leave the contract test
+      # skipping quietly and CI would go green having asserted nothing. herdr is
+      # not named, so its contracts still skip as intended.
       - name: Run tests
+        env:
+          CONTRACT_REQUIRE: gren
         run: bash tests/run.sh

@@ -26,11 +26,29 @@ ok()   { printf 'ok: %s\n' "$1";       pass=$((pass+1)); }
 bad()  { printf 'FAIL: %s\n  %s\n' "$1" "${2:-}"; fail=$((fail+1)); }
 skips(){ printf 'skip: %s\n  %s\n' "$1" "${2:-}"; skip=$((skip+1)); }
 
+# CONTRACT_REQUIRE — comma-separated binaries that MUST be present (e.g.
+# CONTRACT_REQUIRE=gren). A missing one then FAILS instead of skipping.
+#
+# Without this, "binary absent" and "binary present and healthy" both exit 0,
+# so CI that installs gren and then silently fails to (a broken `go install`, a
+# PATH mistake) reports a green run having asserted nothing. Naming what CI
+# expects turns that false green into a failure. Left unset locally, so a
+# machine without gren or herdr still runs what it can.
+required=${CONTRACT_REQUIRE:-}
+is_required() { [[ ",$required," == *",$1,"* ]]; }
+absent() { # name  human-reason → FAIL when required, else skip
+  if is_required "$1"; then
+    bad "$1 contracts" "$2 — but CONTRACT_REQUIRE names '$1', so this is a failure, not a skip"
+  else
+    skips "$1 contracts" "$2"
+  fi
+}
+
 # --- gren contracts -------------------------------------------------------
 # The plugin reads specific fields out of gren's JSON and templating. If these
 # shift, picker.sh / remove.sh / bootstrap.sh break in ways stubs can't see.
 if ! command -v gren >/dev/null; then
-  skips "gren contracts" "gren not on PATH"
+  absent gren "gren not on PATH"
 else
   # A throwaway git repo — NOT gren-configured (no .gren), so we only exercise
   # read-only, config-independent surface.
@@ -73,7 +91,7 @@ fi
 
 # --- herdr contracts ------------------------------------------------------
 if ! command -v "$herdr" >/dev/null && ! command -v herdr >/dev/null; then
-  skips "herdr contracts" "herdr not on PATH"
+  absent herdr "herdr not on PATH"
 else
   # pane get <id> → .result.pane.workspace_id. bootstrap.sh uses this to find
   # the workspace to report the port token on. A bogus id must still be REJECTED

@@ -286,7 +286,24 @@ bash tests/contract_test.sh  # just the real-binary contract checks
 The stubbed suites verify the plugin's own control flow; `contract_test.sh` runs
 the installed gren/herdr and fails loudly if an upstream assumption (JSON shape,
 flag names) has drifted — the class of break that has actually bitten this plugin
-before. It runs in [CI](.github/workflows/ci.yml) on every push and PR.
+before. It skips any binary that isn't installed, so it stays green anywhere.
+
+`CONTRACT_REQUIRE` turns a skip into a failure for binaries you *expect* to be
+there — otherwise "not installed" and "installed and healthy" both exit 0, and a
+broken install reports green having asserted nothing:
+
+```bash
+CONTRACT_REQUIRE=gren,herdr bash tests/contract_test.sh
+```
+
+[CI](.github/workflows/ci.yml) runs on every push and PR, installs the latest
+gren release (`go install`), and sets `CONTRACT_REQUIRE=gren`. It tracks
+`@latest` on purpose: pinning would hide exactly the drift the test exists to
+catch, so a red build there means gren moved, not that your change is wrong.
+herdr is not installed in CI — its CLI needs a running server over a unix
+socket, so those contracts skip there and are covered when you run the suite
+locally. CI also runs **weekly**, since upstream drift arrives on gren's
+schedule and would otherwise ambush whoever pushes next.
 
 herdr caches the manifest when a plugin is linked, so after editing
 `herdr-plugin.toml` you must relink for changes to take effect:
