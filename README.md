@@ -29,8 +29,11 @@ pane** via `gren hook-run --interactive`. That's a real TTY, so interactive setu
 (1Password `op` biometric unlock, `make seed`) and live, uncapped output work,
 with the worktree's own direnv-loaded shell; hooks are approved once per project
 (then remembered), and per-worktree template values like
-`{{ branch | hash_port }}` resolve. The pane also badges the worktree with its
-deterministic dev **port** so you can tell which worktree owns which. When
+`{{ branch | hash_port }}` resolve. It also reports the worktree's deterministic
+dev **port** — on the pane, and on herdr ≥ 0.7.4 on the workspace too, so it
+outlives setup — though herdr ≥ 0.7.4 only *displays* it once you name `$port`
+in your sidebar rows (see
+[Showing the port in the sidebar](#showing-the-port-in-the-sidebar)). When
 there's no pane, it falls back to `gren hook-run` inline (captured output).
 Either way your env files, deps, and hooks are set up automatically — no extra
 step. Requires **gren ≥ 0.16.0** (0.15.0 for `--interactive`; 0.16.0 fixes
@@ -177,19 +180,52 @@ project with per-worktree resources that means orphaned databases/namespaces/por
 - **Per-worktree ports / DBs.** Use `{{ branch | hash_port }}` (a deterministic
   port in 10000–19999) and `{{ branch | sanitize_db }}` in your hooks to give each
   worktree its own dev server port and database, so parallel worktrees don't
-  collide. The setup pane badges the worktree pane with its resolved port. Note:
-  `hash_port` can *rarely* collide (two branches → same port); if that bites,
-  derive the port with `gren step eval` and probe for the next free one.
+  collide. The setup pane reports the resolved port on the pane and the workspace
+  ([showing it](#showing-the-port-in-the-sidebar) needs a sidebar row on herdr
+  ≥ 0.7.4). Note: `hash_port` can *rarely* collide (two branches → same port); if
+  that bites, derive the port with `gren step eval` and probe for the next free one.
 - **Branch on auto-setup.** herdr's `worktree.created` event carries the new
   checkout path but not the branch name, so the setup hook recovers the branch
   from git (`git symbolic-ref --short HEAD`). Your post-create hook receives it
   as `$2`.
+
 - **Removing a dirty worktree.** `gren delete` refuses a worktree with uncommitted
   or untracked files (commit, stash, or delete them first). The remover surfaces
   gren's message rather than force-deleting.
 - **Multiple `worktree.created` plugins.** herdr runs every plugin subscribed to
   the event. If you also run another worktree-bootstrap plugin, both fire on each
   create — disable one to avoid running setup twice.
+
+## Showing the port in the sidebar
+
+Each worktree gets a deterministic dev port (`{{ branch | hash_port }}`). The
+setup pane reports it in two places: on **its own pane** (visible immediately,
+but gone once setup closes) and — on **herdr ≥ 0.7.4** — as a `port` metadata
+token on the worktree's **workspace**, which lasts as long as the worktree does.
+
+On herdr ≥ 0.7.4 **neither is displayed until you ask for it.** A metadata
+reporter supplies values only; it cannot choose rows or styling, and *unreported
+tokens simply disappear*. herdr's default Space rows are `["state_icon",
+"workspace"]` / `["branch", "git_status"]`, which name no custom token — so the
+plugin cannot surface this on its own. Name `$port` in your own layout in
+`~/.config/herdr/config.toml`:
+
+```toml
+[ui.sidebar.spaces]
+rows = [
+  ["state_icon", "workspace"],
+  ["branch", "$port"],
+]
+```
+
+Nothing breaks without it — the port is simply reported and unused.
+
+> **Version note.** herdr 0.7.4 renamed the pane flag: `--custom-status`
+> (≤ 0.7.3, which *did* display automatically) became `--token NAME=VALUE`. The
+> plugin tries `--token` and falls back, so both generations get a badge, and
+> `min_herdr_version` stays at `0.7.0`. On < 0.7.4 the workspace report is
+> skipped entirely. `tests/contract_test.sh` asserts at least one badge flag
+> still parses — it is what caught this rename.
 
 ## Development
 

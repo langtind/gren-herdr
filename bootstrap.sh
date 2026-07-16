@@ -36,15 +36,37 @@ fi
 
 cd "$wt" || { echo "worktree unavailable: $wt"; exit 0; }
 
-# Best-effort: surface this worktree's deterministic per-branch dev port on its
-# own pane, so you can tell at a glance which worktree owns which port. Uses the
-# same engine the hooks do, so the number matches. Never fatal.
+# Best-effort: surface this worktree's deterministic per-branch dev port, so you
+# can tell at a glance which worktree owns which. Uses the same engine the hooks
+# do, so the number matches. Every report here is best-effort and never fatal.
+#
+# Reported on TWO objects, because they fail differently:
+#   - the pane: visible immediately, but dies when this setup pane closes.
+#   - the workspace: outlives setup, which is where the port actually belongs.
+#     Needs herdr >= 0.7.4 (the subcommand does not exist before that).
+#
+# herdr renamed the pane flag in 0.7.4: --custom-status (<= 0.7.3, auto-displays)
+# became --token NAME=VALUE (>= 0.7.4, needs the user's sidebar rows to name
+# $port — reporters supply values, never layout; see README). We try the modern
+# flag and fall back, so both herdr generations get a badge. Drop the fallback
+# when min_herdr_version reaches 0.7.4.
 if [[ -n $target_pane && -n $branch ]]; then
 	port=$(gren step eval '{{ branch | hash_port }}' 2>/dev/null || true)
 	if [[ -n $port ]]; then
+		src=${HERDR_PLUGIN_ID:-gren}
+
 		"$herdr" pane report-metadata "$target_pane" \
-			--source "${HERDR_PLUGIN_ID:-gren}" \
-			--custom-status "port $port" >/dev/null 2>&1 || true
+			--source "$src" --token "port=$port" >/dev/null 2>&1 \
+		|| "$herdr" pane report-metadata "$target_pane" \
+			--source "$src" --custom-status "port $port" >/dev/null 2>&1 \
+		|| true
+
+		ws=$("$herdr" pane get "$target_pane" 2>/dev/null \
+			| jq -r '.result.pane.workspace_id // empty' 2>/dev/null || true)
+		if [[ -n $ws ]]; then
+			"$herdr" workspace report-metadata "$ws" \
+				--source "$src" --token "port=$port" >/dev/null 2>&1 || true
+		fi
 	fi
 fi
 
