@@ -45,6 +45,10 @@ worktrees. Press `Enter` on a match to switch to it, or type a new name and pres
 main/master, else the current branch, like gren's TUI). Typing `pr:42` or `mr:7`
 checks out that PR/MR branch. The worktree is created at gren's configured
 `worktree_dir`, and its post-create setup runs in a pane with a real TTY (see #1).
+On **herdr ≥ 0.7.4** the picker itself opens as a session-modal **popup**, so it
+no longer rearranges your tiled layout; the setup pane it spawns is still a
+normal pane with a live TTY. herdr ≤ 0.7.3 has no popup placement, so the action
+retries as a split there.
 
 **3. A remove picker** (`gren.remove`): an fzf picker over removable worktrees
 (everything except the main checkout). Pick one; gren prompts for confirmation

@@ -12,14 +12,20 @@ platforms = ["macos", "linux"]
 on = "worktree.created"
 command = ["bash", "-c", "exec bash \"$HERDR_PLUGIN_ROOT/on-created.sh\""]
 
-# Workspace action: opens the switch/create picker in a split pane. Plugin panes
-# default their cwd to the plugin root, so pass --cwd = the workspace's repo
-# (from the injected context JSON); otherwise gren runs in the plugin dir.
+# Workspace action: opens the switch/create picker. Plugin panes default their
+# cwd to the plugin root, so pass --cwd = the workspace's repo (from the injected
+# context JSON); otherwise gren runs in the plugin dir.
+#
+# Opens as a session-modal popup on herdr >= 0.7.4, falling back to a split on
+# <= 0.7.3, which errors with "invalid pane placement". Verified end to end that
+# the modal does not fight what the picker does while it lives: the worktree is
+# created, `worktree open --focus` switches workspace, and the setup pane opens
+# focused with a live TTY (an interactive post-create hook still gets keystrokes).
 [[actions]]
 id = "open"
 title = "Worktree: switch / create (gren)"
 contexts = ["workspace"]
-command = ["bash", "-c", "cwd=$(jq -r '.workspace_cwd // .focused_pane_cwd // empty' <<<\"$HERDR_PLUGIN_CONTEXT_JSON\"); exec \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint picker --placement split --direction down --cwd \"$cwd\" --focus"]
+command = ["bash", "-c", "cwd=$(jq -r '.workspace_cwd // .focused_pane_cwd // empty' <<<\"$HERDR_PLUGIN_CONTEXT_JSON\"); \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint picker --placement popup --width 80% --height 60% --cwd \"$cwd\" --focus >/dev/null 2>&1 || exec \"$HERDR_BIN_PATH\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint picker --placement split --direction down --cwd \"$cwd\" --focus"]
 
 # Opens as a session-modal popup on herdr >= 0.7.4: a picker you answer and
 # dismiss shouldn't rearrange the tiled layout. herdr <= 0.7.3 has no popup
