@@ -20,8 +20,12 @@ jobs:
       - name: Install shellcheck + jq
         run: sudo apt-get update && sudo apt-get install -y shellcheck jq
 
+      # -x follows sourced files; --source-path=SCRIPTDIR resolves them relative
+      # to the sourcing script rather than the working directory. Without it,
+      # `source "$here/../helpers.sh"` is an unresolvable variable path and
+      # shellcheck exits 1 on the SC1091 info alone.
       - name: Shellcheck
-        run: shellcheck *.sh tests/*.sh
+        run: shellcheck -x --source-path=SCRIPTDIR *.sh tests/*.sh
 
       # Real gren, tracking @latest deliberately. Pinning would defeat the
       # point: contract_test.sh exists to notice when gren's JSON or CLI stops
