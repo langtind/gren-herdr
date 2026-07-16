@@ -124,6 +124,34 @@ Reload the config after editing it:
 herdr server reload-config
 ```
 
+## Agent skill: chat-driven create / remove
+
+The pickers cover the human at the keyboard; `skills/issue-worktrees/` covers the
+agent in the chat. It's an [agent skill](https://agentskills.io) that lets you say
+*"we're fixing ABC-123, create a worktree"* to a coding agent (Claude Code et al.)
+and get the full flow: branch name derived from the issue (Linear's
+`gitBranchName` via MCP, or `feat|fix/<n>-slug` from a GitHub issue),
+`gren create` from the main checkout, and the worktree registered in herdr's
+sidebar under the branch name. *"Clean up, remove the worktree"* routes through the
+same remover pane as `prefix+shift+d`, so gren's confirmation and pre-remove
+hooks keep gating the destructive step — with a guarded non-interactive fallback
+for sessions outside herdr.
+
+Install it by linking (or copying) the skill folder into your agent's skills
+directory — for Claude Code:
+
+```bash
+# from a clone (symlink tracks updates):
+ln -s "$PWD/skills/issue-worktrees" ~/.claude/skills/issue-worktrees
+```
+
+A `herdr plugin install` puts the plugin under a version-hashed directory
+(`~/.config/herdr/plugins/github/…`) that changes on update — copy the folder
+from there instead of symlinking, and re-copy after plugin updates.
+
+The skill assumes the `gren` CLI (and, inside herdr, this plugin) is installed;
+Linear-issue naming needs a Linear MCP connection in the agent session.
+
 ## Removing worktrees
 
 Delete gren worktrees with **`prefix+shift+d`** (the `gren.remove` action), **not
@@ -172,6 +200,7 @@ The plugin is a manifest plus small bash scripts:
 - `picker.sh` — the switch / create picker
 - `remove.sh` — the remove picker + workspace cleanup
 - `helpers.sh` — shared shell helpers (pr:/mr: detection)
+- `skills/issue-worktrees/SKILL.md` — the agent skill (chat-driven create/remove)
 - `tests/helpers_test.sh` — helper function checks
 - `tests/picker_test.sh` — end-to-end picker run against stubbed gren/fzf/herdr
 
