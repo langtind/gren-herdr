@@ -237,8 +237,14 @@ The plugin is a manifest plus small bash scripts:
 - `remove.sh` — the remove picker + workspace cleanup
 - `helpers.sh` — shared shell helpers (pr:/mr: detection)
 - `skills/issue-worktrees/SKILL.md` — the agent skill (chat-driven create/remove)
-- `tests/helpers_test.sh` — helper function checks
+- `tests/helpers_test.sh` — helper function checks (stubbed gren/herdr)
 - `tests/picker_test.sh` — end-to-end picker run against stubbed gren/fzf/herdr
+- `tests/bootstrap_test.sh` — setup-pane argument plumbing, incl. the port badge
+  and workspace token (stubbed gren/herdr)
+- `tests/contract_test.sh` — runs the **real** gren/herdr and asserts the plugin's
+  assumptions about their JSON and flags still hold; skips cleanly when a binary
+  is absent
+- `tests/run.sh` — runs every suite
 
 See [`docs/debugging.md`](docs/debugging.md) for a field guide to diagnosing
 gren ↔ herdr issues: the two creation paths, the event model, how to test a gren
@@ -248,9 +254,14 @@ failure-signature table.
 Run the tests:
 
 ```bash
-bash tests/helpers_test.sh
-bash tests/picker_test.sh
+bash tests/run.sh          # every suite
+bash tests/contract_test.sh  # just the real-binary contract checks
 ```
+
+The stubbed suites verify the plugin's own control flow; `contract_test.sh` runs
+the installed gren/herdr and fails loudly if an upstream assumption (JSON shape,
+flag names) has drifted — the class of break that has actually bitten this plugin
+before. It runs in [CI](.github/workflows/ci.yml) on every push and PR.
 
 herdr caches the manifest when a plugin is linked, so after editing
 `herdr-plugin.toml` you must relink for changes to take effect:

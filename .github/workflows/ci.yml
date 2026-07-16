@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck jq
+
+      - name: Shellcheck
+        run: shellcheck *.sh tests/*.sh
+
+      # gren and herdr are not installed here, so contract_test.sh skips its
+      # binary probes (green). The stub suites run fully. Installing gren
+      # (`go install github.com/langtind/gren@latest`) and herdr would activate
+      # the real contract assertions — worth doing once their CI installs are
+      # stable.
+      - name: Run tests
+        run: bash tests/run.sh
