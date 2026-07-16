@@ -36,8 +36,7 @@ in your sidebar rows (see
 [Showing the port in the sidebar](#showing-the-port-in-the-sidebar)). When
 there's no pane, it falls back to `gren hook-run` inline (captured output).
 Either way your env files, deps, and hooks are set up automatically — no extra
-step. Requires **gren ≥ 0.16.0** (0.15.0 for `--interactive`; 0.16.0 fixes
-`$REPO_ROOT` resolving to the main checkout for hooks run from a worktree).
+step. (Interactive hooks need gren ≥ 0.16.0 — see [Requirements](#requirements).)
 
 **2. A gren-driven switch/create picker** (`gren.open`): an fzf picker over your
 worktrees. Press `Enter` on a match to switch to it, or type a new name and press
@@ -66,16 +65,28 @@ placement`), so the action retries as a split there.
 
 ## Requirements
 
-- [**herdr**](https://herdr.dev) ≥ 0.7.0
-- [**gren**](https://github.com/langtind/gren) ≥ 0.11.0 — the `gren` CLI on your
-  `PATH`. `gren init` is **optional**: since 0.11.0 gren works on any git repo
-  with defaults (worktrees under `../<repo>-worktrees`, no hooks), so the picker
-  creates worktrees anywhere. Run `gren init` only to add post-create setup
-  (env-symlinks, dependency install, hooks) — which the `worktree.created`
-  event then runs automatically.
-- **fzf** — the interactive picker
-- **jq** — JSON parsing
-- **bash** — the scripts run with `/bin/bash`
+**Always needed:** [**gren**](https://github.com/langtind/gren) and
+[**herdr**](https://herdr.dev) on your `PATH`, plus **fzf** (the picker), **jq**
+(JSON parsing), and **bash** (the scripts run with `/bin/bash`).
+
+The plugin runs on older versions and degrades quietly rather than breaking — so
+here is what each version actually buys you:
+
+| | Minimum | Recommended | What the newer version adds |
+|---|---|---|---|
+| **gren** | 0.11.0 | **0.18.1** | 0.15.0: `hook-run --interactive`. 0.16.0: `$REPO_ROOT` resolves to the main checkout for hooks run from a worktree. 0.18.1: `create --format=json` keeps stdout pure JSON — older versions could print a warning ahead of the payload and strand a worktree with no setup. |
+| **herdr** | 0.7.0 | **0.7.4** | Pickers open as popups instead of rearranging your layout, and the per-worktree port is reported on the workspace so it outlives setup ([config needed](#showing-the-port-in-the-sidebar)). |
+
+Below the recommended versions everything still works, minus those features:
+interactive hooks (1Password `op`, `make seed`) need gren ≥ 0.16.0, and the
+pickers fall back to split panes on herdr ≤ 0.7.3.
+
+`gren init` is **optional**: since gren 0.11.0 it works on any git repo with
+defaults (worktrees under `../<repo>-worktrees`, no hooks), so the picker creates
+worktrees anywhere. Run `gren init` only to add post-create setup (env-symlinks,
+dependency install, hooks) — which the `worktree.created` event then runs
+automatically. **Commit `.gren/`**: a worktree is a fresh checkout, so it only
+inherits hooks that are tracked in git.
 
 Platforms: macOS and Linux.
 
@@ -93,6 +104,12 @@ Or, for local development, clone and link:
 git clone https://github.com/langtind/gren-herdr
 herdr plugin link /path/to/gren-herdr
 ```
+
+That's the whole install — worktree setup runs automatically from here. Two
+optional extras: bind the pickers to keys ([Keybindings](#keybindings)), and, on
+herdr ≥ 0.7.4, add one line of config to see each worktree's dev port in the
+sidebar ([Showing the port in the sidebar](#showing-the-port-in-the-sidebar)) —
+herdr never displays custom values unless you ask it to.
 
 ## Usage
 

@@ -97,10 +97,54 @@ throwaway `XDG_DATA_HOME`:
 export XDG_DATA_HOME=$(mktemp -d) HOME=$(mktemp -d)
 ```
 
+### 5. Debugging a popup pane (herdr ≥ 0.7.4)
+
+**Popups are invisible to the pane API.** `plugin pane open --placement popup`
+returns `{"type":"ok"}` with **no `pane_id`**, and the popup never appears in
+`herdr pane list`. So a popup that fails cannot be inspected, targeted, or closed
+from the CLI — and since a picker that dies early leaves *no* trace, "nothing
+happened" tells you nothing about why.
+
+The only way to see one is to look at the screen. `screencapture` is built into
+macOS but needs herdr to hold **Screen Recording** permission (System Settings →
+Privacy & Security → Screen Recording), or it fails with `could not create image
+from display`:
+
+```bash
+screencapture -x /tmp/shot.png
+```
+
+To debug a picker's *logic* without the popup blindfold, open the same entrypoint
+as a split — it is then a normal pane you can read:
+
+```bash
+herdr plugin pane open --plugin gren --entrypoint picker \
+  --placement split --direction down --cwd /path/to/repo --focus
+```
+
+To drive a picker non-interactively, inject a stub `fzf` ahead of the real one
+with `--env PATH=`. The picker calls fzf twice: once with `--print-query` (the
+name), once for the base branch.
+
+```bash
+stub=$(mktemp -d)
+cat > "$stub/fzf" <<'F'
+#!/usr/bin/env bash
+if [[ "$*" == *--print-query* ]]; then cat >/dev/null; printf 'my-branch\n'; else head -1; fi
+F
+chmod +x "$stub/fzf"
+herdr plugin pane open --plugin gren --entrypoint picker --placement popup \
+  --cwd /path/to/repo --focus --env "PATH=$stub:$PATH"
+```
+
 ## Failure-signature table
 
 | Symptom | Cause | Fixed in |
 |---|---|---|
+| Worktree **port badge silently gone** after upgrading herdr to 0.7.4 — no error anywhere, setup otherwise fine | herdr 0.7.4 removed `--custom-status` from `pane report-metadata` in favour of `--token NAME=VALUE`; the badge call is best-effort behind `>/dev/null 2>&1 \|\| true`, so `unknown option` was swallowed. **Not in herdr's release notes** — `tests/contract_test.sh` caught it against the real binary | gren-herdr `52f18ac` (try `--token`, fall back to `--custom-status`) |
+| Port reported successfully (`workspace get` shows `tokens.port`) but **nothing appears in the sidebar** | herdr never displays custom tokens on its own: a reporter supplies values, never layout, and unreported tokens vanish. Default Space rows name no custom token | not a bug — add `$port` to `[ui.sidebar.spaces]` rows ([README](../README.md#showing-the-port-in-the-sidebar)) |
+| Picker-created worktree gets **no hooks**, `hook-run` no-ops with rc=0, setup pane closes instantly | `.gren/` is untracked in the main checkout. A worktree is a fresh checkout, so it inherits only what git tracks — the worktree has no `.gren/config.toml` and gren finds no hooks | not a bug — commit `.gren/` |
+| `gren create` fails with `invalid configuration in .gren/config.toml: version cannot be empty` | `.gren/config.toml` is missing the required `version` field (hooks also use `[hooks]` with `post-create`, not `[[hooks.post_create]]`) | not a bug — see gren's config docs |
 | `(eval):1: unknown file attribute: v` / `(eval):2: no matches found: config?` in a worktree shell on create | gren's config-migration prompt printed to stdout during `gren shell-init zsh`, then eval'd by `.zshrc`'s `eval "$(gren shell-init zsh)"` | gren 0.16.1 (migration prompt is now TUI-only) |
 | `panic … nil pointer … main.checkAndPromptMigration` | concurrent gren processes race migrating the config; `Migrate()` returns `(nil,nil)` and the caller dereferenced it | gren 0.16.1 |
 | Post-create script's `.env` symlink (or anything using `$REPO_ROOT`) silently missing | `gren hook-run` from a worktree resolved `$REPO_ROOT` to the worktree, not the main checkout | gren 0.16.0 (`getRepoRoot` uses `git --git-common-dir`) |
