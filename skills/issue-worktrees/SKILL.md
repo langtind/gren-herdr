@@ -34,11 +34,16 @@ The user announcing that work on an issue is starting — "we're fixing ABC-123"
    herdr already labels the workspace with the worktree's directory basename (`fix-123-short-slug`) — that default is *fine*, just slash-less. Read the `.workspace.label` you get back from `worktree open` before renaming; if it already reads as the branch, skip the rename rather than replacing a good label with a worse one. Keep `--no-focus` unless the user asked to jump into the worktree.
 
 4. **Run post-create setup.** Required whenever `.gren/config.toml` defines a `post-create` hook — the worktree is not ready to hand over until it has run. First check whether the hook is interactive: `interactive = true` on a `[[named-hooks.post-create]]` entry, or the script itself prompting (`read`, y/N). Many op/seed hooks are deliberately non-interactive — desktop-app `op` works headless — so check, don't assume.
-   - **In herdr**: run it in the worktree's root pane (`.result.root_pane.pane_id` from `worktree open`):
+   - **In herdr**: run it in the worktree's root pane (`.result.root_pane.pane_id` from `worktree open`), with an exit-code sentinel appended:
      ```bash
-     herdr pane run <pane_id> "gren hook-run --type post-create --path '<path>' --branch '<branch>' --base '<base-branch>'"
+     herdr pane run <pane_id> "gren hook-run --type post-create --path '<path>' --branch '<branch>' --base '<base-branch>'; echo SETUP-EXIT-\$?"
+     herdr wait output <pane_id> --regex --match 'SETUP-EXIT-[0-9]+' --timeout 600000
      ```
-     Add `--interactive` only when the hook is interactive, and tell the user the pane is waiting for their input (an approval prompt is part of `--interactive`). Verify the command actually submitted — long strings can stall as a paste placeholder — and confirm completion before reporting the worktree ready.
+     `SETUP-EXIT-0` = success; anything else → read the pane tail and report the failure. This is the **only** sanctioned way to wait: do not poll `pane read | grep` for prompt glyphs or guessed completion phrases — gren prints no terminal marker on success (just ✓-lines, then the shell prompt returns), and prompt symbols vary per user config, so glyph-scraping loops hang forever. The sentinel is prompt-agnostic; keep the `-[0-9]+` requirement so the match can't hit the command's own echo (which shows the literal `$?`).
+
+     Add `--interactive` only when the hook is interactive, and tell the user the pane is waiting for their input (an approval prompt is part of `--interactive`) — then wait on the sentinel the same way, with a generous timeout. Verify the command actually submitted — long strings can stall as a paste placeholder.
+
+     **`pane run` types into whatever is running in that pane.** It is only safe while the pane is still a shell. If any time has passed since `worktree open` (or you are re-entering the flow), check `herdr pane process-info <pane_id>` first — if the user has already started an agent or another program there, your "command" becomes a prompt fed to it. Run setup immediately after `worktree open`, before handing the worktree over.
    - **Not in herdr**: non-interactive hook → run the same `gren hook-run` directly from the worktree. Interactive hook → give the user the exact command; that is the only case where setup is handed off.
 
    Setup may be skipped only when the user explicitly says to skip it — then say so when reporting, so a later build failure isn't a mystery.
@@ -82,3 +87,5 @@ Then tell the user which branch to pick in the picker. Don't replicate the flow 
 | Deleting the branch along with the worktree | Branch stays unless the user says otherwise |
 | Creating with `--no-hooks` and telling the user to run setup themselves | `--no-hooks` defers setup to step 4; the agent runs `gren hook-run` (in the herdr pane when available) |
 | Assuming hooks "need a TTY" without checking | Interactivity is observable: `interactive = true` in config, or `read`/prompts in the script. Only interactive hooks need `--interactive` and a human |
+| Waiting for setup by polling `pane read \| grep` for prompt glyphs or guessed phrases ("completed", `❯ $`) | Append `; echo SETUP-EXIT-\$?` to the command and `herdr wait output --regex --match 'SETUP-EXIT-[0-9]+'` — gren has no success marker and prompt glyphs vary, so scraping hangs forever |
+| `pane run` into a pane without checking what's running there | `pane run` types into the foreground program. After handoff the user may have an agent in that pane — your command becomes its prompt. Check `herdr pane process-info` unless you *just* opened the pane |
