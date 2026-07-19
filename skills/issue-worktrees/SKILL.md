@@ -21,9 +21,9 @@ The user announcing that work on an issue is starting — "we're fixing ABC-123"
    - **No issue reference**: `feat/<short-slug>` from the task description; confirm the name with the user if the task is vague.
 2. **Create from the main checkout** (never from inside another worktree — gren reads `.gren/config.toml` relative to cwd):
    ```bash
-   gren create -n "<branch>" --format=json
+   gren create -n "<branch>" --format=json --no-hooks
    ```
-   Parse `.path` from the JSON. If the repo's `.gren` hooks need a human at a TTY (1Password `op`, seeding prompts), create with `--no-hooks` and tell the user to run setup — see the gren skill's interactive-setup caveat.
+   Parse `.path` from the JSON. `--no-hooks` is unconditional and mirrors the create picker: post-create runs as its own step (4) where output is visible and prompts reach a TTY. It is a deferral, never a skip.
 3. **Register in herdr's sidebar** (only if `HERDR_ENV=1`):
    ```bash
    herdr worktree open --path "<path>" --cwd "<main repo>" --no-focus --json
@@ -32,6 +32,16 @@ The user announcing that work on an issue is starting — "we're fixing ABC-123"
    Parse `<workspace-id>` from `worktree open`'s JSON output. **Rename to the branch name — the exact string passed to `gren create -n`, slashes and all** (`fix/123-short-slug`, `<user>/abc-123-short-slug`). Not the bare issue id: `#123` / `ABC-123` throws away the type prefix and the slug, which is the whole point of the label.
 
    herdr already labels the workspace with the worktree's directory basename (`fix-123-short-slug`) — that default is *fine*, just slash-less. Read the `.workspace.label` you get back from `worktree open` before renaming; if it already reads as the branch, skip the rename rather than replacing a good label with a worse one. Keep `--no-focus` unless the user asked to jump into the worktree.
+
+4. **Run post-create setup.** Required whenever `.gren/config.toml` defines a `post-create` hook — the worktree is not ready to hand over until it has run. First check whether the hook is interactive: `interactive = true` on a `[[named-hooks.post-create]]` entry, or the script itself prompting (`read`, y/N). Many op/seed hooks are deliberately non-interactive — desktop-app `op` works headless — so check, don't assume.
+   - **In herdr**: run it in the worktree's root pane (`.result.root_pane.pane_id` from `worktree open`):
+     ```bash
+     herdr pane run <pane_id> "gren hook-run --type post-create --path '<path>' --branch '<branch>' --base '<base-branch>'"
+     ```
+     Add `--interactive` only when the hook is interactive, and tell the user the pane is waiting for their input (an approval prompt is part of `--interactive`). Verify the command actually submitted — long strings can stall as a paste placeholder — and confirm completion before reporting the worktree ready.
+   - **Not in herdr**: non-interactive hook → run the same `gren hook-run` directly from the worktree. Interactive hook → give the user the exact command; that is the only case where setup is handed off.
+
+   Setup may be skipped only when the user explicitly says to skip it — then say so when reporting, so a later build failure isn't a mystery.
 
 ## Remove — "we're done with ABC-123, remove the worktree"
 
@@ -70,3 +80,5 @@ Then tell the user which branch to pick in the picker. Don't replicate the flow 
 | Worktree deleted but its workspace still in the sidebar (fallback path) | Capture `open_workspace_id` before deleting, `herdr workspace close` after |
 | Force-handling a dirty worktree | Stop and show the user; they decide |
 | Deleting the branch along with the worktree | Branch stays unless the user says otherwise |
+| Creating with `--no-hooks` and telling the user to run setup themselves | `--no-hooks` defers setup to step 4; the agent runs `gren hook-run` (in the herdr pane when available) |
+| Assuming hooks "need a TTY" without checking | Interactivity is observable: `interactive = true` in config, or `read`/prompts in the script. Only interactive hooks need `--interactive` and a human |
