@@ -184,6 +184,53 @@ else
   else
     skips "herdr plugin pane open flags" "inconclusive: $(printf '%s' "$out" | head -c 120)"
   fi
+
+  # --- skills/issue-worktrees contracts ------------------------------------
+  # The skill is shipped from this repo and drives herdr by hand, so its
+  # commands drift exactly like the scripts' do — and nothing else asserts them.
+  # herdr 0.7.5 removed the top-level `wait` the skill used to document; the
+  # failure mode was an agent hanging on "unknown command" forever, which no
+  # stub test could see.
+
+  # pane wait-output — the sentinel waiter after `gren hook-run`. A bogus pane
+  # returns pane_not_found only if the subcommand AND its flags parsed.
+  out=$("$herdr" pane wait-output "no-such:pane" --regex 'CT-[0-9]+' --timeout 1 2>&1 || true)
+  if printf '%s' "$out" | grep -qiE 'pane_not_found|not found'; then
+    ok "herdr pane wait-output --regex/--timeout parse (0.7.5 sentinel waiter)"
+  elif printf '%s' "$out" | grep -qiE 'unknown (sub)?command|unknown option'; then
+    bad "herdr pane wait-output is gone or renamed" \
+        "got: $(printf '%s' "$out" | head -c 120) — skills/issue-worktrees waits on a command that does not exist"
+  else
+    skips "herdr pane wait-output" "inconclusive: $(printf '%s' "$out" | head -c 120)"
+  fi
+
+  # agent start/wait — the 0.7.5 handoff step. Version-gated: absent before
+  # 0.7.5, so SKIP loudly there rather than passing silently.
+  out=$("$herdr" agent start ct-name --kind claude --pane "no-such:pane" 2>&1 || true)
+  if printf '%s' "$out" | grep -qiE 'agent_pane_not_found|not found'; then
+    ok "herdr agent start --kind/--pane parse (0.7.5 agent handoff)"
+  elif printf '%s' "$out" | grep -qiE 'unknown (sub)?command|usage'; then
+    skips "herdr agent start (herdr >= 0.7.5)" "not in this herdr ($("$herdr" --version 2>/dev/null | head -1)); the skill's step 5 does not apply"
+  else
+    bad "herdr agent start rejects --kind/--pane" "got: $(printf '%s' "$out" | head -c 120) — the skill's agent handoff is wrong"
+  fi
+
+  # agent list — the remove-path safety gate reads these fields to spot a live
+  # agent inside the worktree being deleted. `name` is omitted when unset, which
+  # the skill's `.name // .pane_id` already tolerates; the rest must be present.
+  if al=$("$herdr" agent list 2>/dev/null) && printf '%s' "$al" | jq -e '.result.agents' >/dev/null 2>&1; then
+    shape=$(printf '%s' "$al" | jq -r '
+      if (.result.agents | length) == 0 then "empty"
+      elif (.result.agents[0] | has("agent_status") and has("cwd") and has("foreground_cwd")) then "ok"
+      else "missing-keys" end' 2>/dev/null)
+    case $shape in
+      ok)    ok "herdr agent list → .agents[] with .agent_status/.cwd/.foreground_cwd" ;;
+      empty) skips "herdr agent list shape" "no agents running in this session" ;;
+      *)     bad "herdr agent list dropped a field the remove gate reads" "got: $shape — the live-agent check in skills/issue-worktrees silently passes" ;;
+    esac
+  else
+    skips "herdr agent list" "no running herdr session, or not the expected envelope"
+  fi
 fi
 
 printf '\n%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"
