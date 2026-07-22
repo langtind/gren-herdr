@@ -314,6 +314,14 @@ herdr plugin unlink gren && herdr plugin link "$PWD"
 
 Edits to the bash scripts are picked up on the next run — no relink needed.
 
+## Credits
+
+The shape of this plugin — wiring a dedicated worktree manager into herdr
+rather than reimplementing setup inside it — follows
+[herdr-worktrunk](https://github.com/devashish2203/herdr-worktrunk) by Devashish
+Chandra, which did it first for [worktrunk](https://github.com/max-sixty/worktrunk).
+This README's framing owes it a direct debt. The code is independent.
+
 ## License
 
 [MIT](LICENSE.md) © Arild Langtind
