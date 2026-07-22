@@ -74,7 +74,7 @@ here is what each version actually buys you:
 
 | | Minimum | Recommended | What the newer version adds |
 |---|---|---|---|
-| **gren** | 0.11.0 | **0.18.1** | 0.15.0: `hook-run --interactive`. 0.16.0: `$REPO_ROOT` resolves to the main checkout for hooks run from a worktree. 0.18.1: `create --format=json` keeps stdout pure JSON — older versions could print a warning ahead of the payload and strand a worktree with no setup. |
+| **gren** | 0.11.0 | **0.19.0** | 0.15.0: `hook-run --interactive`. 0.16.0: `$REPO_ROOT` resolves to the main checkout for hooks run from a worktree. 0.18.1: `create --format=json` keeps stdout pure JSON — older versions could print a warning ahead of the payload and strand a worktree with no setup. 0.19.0: `delete --dry-run --format=json`, which the agent skill uses to ask what blocks a removal instead of running its own `git status --porcelain`. |
 | **herdr** | 0.7.0 | **0.7.4** | Pickers open as popups instead of rearranging your layout, and the per-worktree port is reported on the workspace so it outlives setup ([config needed](#showing-the-port-in-the-sidebar)). |
 
 Below the recommended versions everything still works, minus those features:

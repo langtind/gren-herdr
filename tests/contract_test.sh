@@ -77,6 +77,31 @@ else
     bad "gren list --format=json failed in a plain git repo" "picker.sh aborts here"
   fi
 
+  # gren delete --dry-run --format=json → the removal-safety contract the
+  # issue-worktrees skill now depends on instead of running its own
+  # `git status --porcelain`. Version-gated on gren >= 0.19.0: SKIP loudly on
+  # older gren, where the skill's documented fallback applies.
+  #
+  # A dry run against a NON-EXISTENT worktree is safe by construction — it
+  # cannot delete what it cannot find — and still proves the flags parse and
+  # the payload is the expected envelope.
+  #
+  # Capture the streams SEPARATELY. Merging them would defeat the point: gren's
+  # guarantee is that stdout carries the payload alone, and a probe that pipes
+  # stderr into the same buffer tests the opposite of what the skill relies on.
+  ct_err=$(mktemp)
+  out=$( (cd "$repo" && gren delete --dry-run --format=json no-such-worktree-ct) 2>"$ct_err" || true)
+  err=$(cat "$ct_err"); rm -f "$ct_err"
+  if printf '%s' "$out" | jq -e 'has("deleted") and has("reason")' >/dev/null 2>&1; then
+    ok "gren delete --dry-run --format=json → pure-stdout envelope with .deleted/.reason"
+  elif printf '%s\n%s' "$out" "$err" | grep -qiE 'flag provided but not defined|unknown|unsupported format'; then
+    skips "gren delete --format=json (gren >= 0.19.0)" \
+          "not in this gren ($(gren --version 2>/dev/null | head -1)); the skill's porcelain fallback applies"
+  else
+    bad "gren delete --dry-run --format=json is not the expected envelope" \
+        "got: $(printf '%s' "$out" | head -c 160) — the skill's remove gate reads .deleted/.reason/.blocking"
+  fi
+
   # gren step eval '{{ branch | hash_port }}' → a bare integer. bootstrap.sh
   # badges the pane with this and reports it as the workspace port token.
   port=$( (cd "$repo" && gren step eval '{{ branch | hash_port }}') 2>/dev/null || true)
