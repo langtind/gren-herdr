@@ -52,9 +52,16 @@ The user announcing that work on an issue is starting — "we're fixing ABC-123"
 
 5. **Hand the worktree over to an agent** (herdr ≥ 0.7.5, and only when the user wants the work to continue in that pane rather than in yours). After `SETUP-EXIT-0` the pane is back at its shell prompt, which is exactly what `agent start` requires:
    ```bash
-   herdr agent start "<repo>/<branch>" --kind claude --pane <pane_id>
-   herdr agent prompt "<repo>/<branch>" "<issue title + link + what to do>" --wait
+   agent_name="<repo>/<branch>"
+   prompt=$(cat <<'PROMPT'
+   <issue title + link + what to do>
+   PROMPT
+   )
+   herdr agent start "$agent_name" --kind claude --pane "<pane_id>"
+   herdr agent prompt "$agent_name" "$prompt" --wait
    ```
+   **Build the prompt in a variable; never paste tracker text straight into the command line.** Issue titles and descriptions routinely contain `"`, backticks, and `$(…)`. Inlined, a quote ends the argument and `$(…)` executes in your shell before `herdr` ever sees it — you would be running whatever the ticket says, which is not the same thing as sending it to an agent.
+
    Prefer this over `pane run "claude"` + output-scraping. `agent start` verifies the pane is at an interactive prompt, validates the agent kind, and only reports success once the agent is detected and ready for input — so it fails loudly instead of typing your command into whatever else is running there. `agent prompt --wait` returns `agent_prompt_stalled` after five seconds without an observed state change, instead of hanging on a submission that never landed.
 
    **Name it `<repo>/<branch>`, not `<branch>`.** The name must be unique among *live* agents, and branch names collide across repos in one herdr session. Names are live-only — they are cleared when the agent exits, is released, or is replaced — so re-read them from `herdr agent list` rather than assuming yours survived. Once named, every later `agent read/prompt/wait/focus` takes that name instead of a pane id, which stays correct after the pane is moved or the ids compact.
@@ -74,10 +81,12 @@ Then tell the user which branch to pick in the picker. Don't replicate the flow 
 1. **Safety gate — uncommitted work**: `git -C <worktree> status --porcelain` must be empty. Otherwise stop and show the user what's uncommitted — never resolve it with force-delete, `git clean`, or stashing on their behalf.
 2. **Safety gate — live agent** (in herdr): a clean tree does not mean nobody is working there. An agent mid-turn has nothing on disk yet.
    ```bash
-   herdr agent list | jq -r --arg p "<path>" \
-     '.result.agents[] | select(((.foreground_cwd // .cwd) // "") | startswith($p)) | "\(.name // .pane_id) \(.agent_status)"'
+   herdr agent list | jq -er --arg p "<path>" \
+     '.result.agents[] | select((.foreground_cwd // .cwd // "") as $c | $c == $p or ($c | startswith($p + "/"))) | "\(.name // .pane_id) \(.agent_status)"'
    ```
    Any hit with status `working` or `blocked` → stop and ask. `idle`/`done` is fine to remove.
+
+   Match on a directory boundary, not a bare prefix: `startswith($p)` alone also matches `<path>-2`, so an unrelated worktree's agent would block the removal. And **fail closed** — if `herdr agent list` errors, or its output doesn't parse as the expected envelope, treat that as "an agent may be running" and stop. An empty result and a failed check look identical to the next step otherwise, and only one of them is safe.
 3. **If in herdr, capture the workspace id** while the path still exists:
    ```bash
    herdr worktree list --cwd "<main repo>" --json \

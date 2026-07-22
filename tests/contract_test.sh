@@ -194,10 +194,15 @@ else
 
   # pane wait-output — the sentinel waiter after `gren hook-run`. A bogus pane
   # returns pane_not_found only if the subcommand AND its flags parsed.
+  #
+  # Match the EXACT error code, never a bare "not found". A dead socket, a
+  # missing config, or a stale session all say "not found" somewhere in their
+  # message — accepting that would turn an environment failure into a green
+  # contract, which is the one outcome worse than a red one here.
   out=$("$herdr" pane wait-output "no-such:pane" --regex 'CT-[0-9]+' --timeout 1 2>&1 || true)
-  if printf '%s' "$out" | grep -qiE 'pane_not_found|not found'; then
+  if printf '%s' "$out" | grep -q 'pane_not_found'; then
     ok "herdr pane wait-output --regex/--timeout parse (0.7.5 sentinel waiter)"
-  elif printf '%s' "$out" | grep -qiE 'unknown (sub)?command|unknown option'; then
+  elif printf '%s' "$out" | grep -qiE 'unknown (sub)?command|unknown option|herdr pane commands'; then
     bad "herdr pane wait-output is gone or renamed" \
         "got: $(printf '%s' "$out" | head -c 120) — skills/issue-worktrees waits on a command that does not exist"
   else
@@ -205,11 +210,14 @@ else
   fi
 
   # agent start/wait — the 0.7.5 handoff step. Version-gated: absent before
-  # 0.7.5, so SKIP loudly there rather than passing silently.
+  # 0.7.5, so SKIP loudly there rather than passing silently. The skip is
+  # gated on the command being ABSENT (older herdr prints its `herdr agent
+  # commands:` list); a rejected flag prints usage too, and that must fail —
+  # it is exactly the drift this test exists to catch.
   out=$("$herdr" agent start ct-name --kind claude --pane "no-such:pane" 2>&1 || true)
-  if printf '%s' "$out" | grep -qiE 'agent_pane_not_found|not found'; then
+  if printf '%s' "$out" | grep -q 'agent_pane_not_found'; then
     ok "herdr agent start --kind/--pane parse (0.7.5 agent handoff)"
-  elif printf '%s' "$out" | grep -qiE 'unknown (sub)?command|usage'; then
+  elif printf '%s' "$out" | grep -qiE 'unknown (sub)?command|herdr agent commands'; then
     skips "herdr agent start (herdr >= 0.7.5)" "not in this herdr ($("$herdr" --version 2>/dev/null | head -1)); the skill's step 5 does not apply"
   else
     bad "herdr agent start rejects --kind/--pane" "got: $(printf '%s' "$out" | head -c 120) — the skill's agent handoff is wrong"
@@ -218,10 +226,17 @@ else
   # agent list — the remove-path safety gate reads these fields to spot a live
   # agent inside the worktree being deleted. `name` is omitted when unset, which
   # the skill's `.name // .pane_id` already tolerates; the rest must be present.
+  #
+  # Check EVERY entry, not just the first: the gate iterates .result.agents[],
+  # so one malformed later entry is enough to make it miss a running agent —
+  # and sampling [0] would report that as ok. At least one of cwd /
+  # foreground_cwd must also be a usable string, since the gate matches the
+  # worktree path against them and a null pair silently matches nothing.
   if al=$("$herdr" agent list 2>/dev/null) && printf '%s' "$al" | jq -e '.result.agents' >/dev/null 2>&1; then
     shape=$(printf '%s' "$al" | jq -r '
       if (.result.agents | length) == 0 then "empty"
-      elif (.result.agents[0] | has("agent_status") and has("cwd") and has("foreground_cwd")) then "ok"
+      elif (all(.result.agents[]; has("agent_status") and has("cwd") and has("foreground_cwd"))
+            and all(.result.agents[]; ((.foreground_cwd // .cwd) | type) == "string")) then "ok"
       else "missing-keys" end' 2>/dev/null)
     case $shape in
       ok)    ok "herdr agent list → .agents[] with .agent_status/.cwd/.foreground_cwd" ;;
