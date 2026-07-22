@@ -78,7 +78,13 @@ Then tell the user which branch to pick in the picker. Don't replicate the flow 
 
 **Fallback — when the picker can't be used**: not inside herdr, the gren plugin isn't installed, or nobody is at the keyboard to drive the picker (autonomous cleanup, or the user asked for hands-off removal). An agent can't answer gren's y/N prompt, so `-f` is required; the gates around it are therefore mandatory:
 
-1. **Safety gate — uncommitted work**: `git -C <worktree> status --porcelain` must be empty. Otherwise stop and show the user what's uncommitted — never resolve it with force-delete, `git clean`, or stashing on their behalf.
+1. **Safety gate — uncommitted work**: ask gren, from the main checkout. It knows exactly what would block its own removal, so don't reimplement the check:
+   ```bash
+   gren delete --dry-run --format=json "<branch>" | jq -c '{would_force, blocking}'
+   ```
+   `blocking` is `null` → nothing is in the way, proceed. Otherwise `blocking.tracked` lists the untracked or modified entries as `{status, path}` — **stop and show the user those**, and never resolve them with force-delete, `git clean`, or stashing on their behalf. `blocking.ignored_count` is build output (`node_modules/`, `.venv/`) that every set-up worktree has; it is not a reason to stop.
+
+   Needs gren ≥ 0.19.0. On older gren, fall back to `git -C <worktree> status --porcelain` being empty — the same check, just without the ignored/tracked split, so it stops on build output too.
 2. **Safety gate — live agent** (in herdr): a clean tree does not mean nobody is working there. An agent mid-turn has nothing on disk yet.
    ```bash
    herdr agent list | jq -er --arg p "<path>" \
@@ -94,8 +100,9 @@ Then tell the user which branch to pick in the picker. Don't replicate the flow 
    ```
 4. **Delete from the main checkout**, only after steps 1 and 2 passed:
    ```bash
-   gren delete -f -- "<branch>"
+   gren delete -f --format=json -- "<branch>" | jq -c '{deleted, reason, path}'
    ```
+   Check `.deleted`, not the exit code alone. When it is false, `.reason` names the cause from a closed set (`hook_failed`, `not_found`, `blocked`, `confirmation_required`, `error`) — report that rather than a generic failure. Drop `--format=json` on gren < 0.19.0.
 5. **Close the sidebar workspace** if one was found: `herdr workspace close <workspace-id>`.
 
 **Either path: keep the branch.** gren preserves it by design. Delete it only if the user asked, or it has zero unique commits vs. its base — then `git branch -d` (never `-D`).
@@ -110,6 +117,7 @@ Then tell the user which branch to pick in the picker. Don't replicate the flow 
 | Removing with `gren delete -f` while inside herdr | Invoke the plugin's remover instead — `-f` bypasses gren's confirmation and dirty-worktree refusal |
 | Worktree deleted but its workspace still in the sidebar (fallback path) | Capture `open_workspace_id` before deleting, `herdr workspace close` after |
 | Force-handling a dirty worktree | Stop and show the user; they decide |
+| Reimplementing the dirty-worktree check with `git status --porcelain` | `gren delete --dry-run --format=json` (gren ≥ 0.19.0) — gren knows what blocks its own removal, and splits work-at-risk from disposable build output, which a raw porcelain check does not |
 | Deleting the branch along with the worktree | Branch stays unless the user says otherwise |
 | Creating with `--no-hooks` and telling the user to run setup themselves | `--no-hooks` defers setup to step 4; the agent runs `gren hook-run` (in the herdr pane when available) |
 | Assuming hooks "need a TTY" without checking | Interactivity is observable: `interactive = true` in config, or `read`/prompts in the script. Only interactive hooks need `--interactive` and a human |
