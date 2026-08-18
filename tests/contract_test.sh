@@ -180,16 +180,28 @@ else
   # herdr workspace to close from this. herdr has dropped a neighbouring field
   # here before (source_workspace_id), which broke the picker; this is read-only,
   # so assert the shape against the real repo we are running in.
+  #
+  # `open_workspace_id` is OMITTED, not null, on a worktree that is not currently
+  # open in a herdr workspace — which is every entry in a repo whose worktrees
+  # nobody has opened, including the plain main checkout this suite usually runs
+  # from. Asserting it on worktrees[0] therefore fails on a perfectly healthy
+  # herdr (observed on 0.8.0, 2026-08-18). `.path` is unconditional and IS
+  # asserted on every entry; the workspace id can only be judged where one exists.
+  # No open workspace anywhere → skip loudly, because "herdr dropped the field"
+  # and "nothing is open here" are indistinguishable from this side.
   if wl=$("$herdr" worktree list --cwd "$PWD" --json 2>/dev/null) \
      && printf '%s' "$wl" | jq -e '.result.worktrees' >/dev/null 2>&1; then
     shape=$(printf '%s' "$wl" | jq -r '
       if (.result.worktrees | length) == 0 then "empty"
-      elif (.result.worktrees[0] | has("path") and has("open_workspace_id")) then "ok"
-      else "missing-keys" end' 2>/dev/null)
+      elif (.result.worktrees | map(has("path")) | any(. == false)) then "missing-path"
+      elif (.result.worktrees | map(has("open_workspace_id")) | any) then "ok"
+      else "none-open" end' 2>/dev/null)
     case $shape in
-      ok)    ok "herdr worktree list → .worktrees[] with .path/.open_workspace_id" ;;
-      empty) skips "herdr worktree list shape" "no worktrees registered here" ;;
-      *)     bad "herdr worktree list dropped .path/.open_workspace_id" "got: $shape — remove.sh cannot find the workspace to close" ;;
+      ok)       ok "herdr worktree list → .worktrees[] with .path/.open_workspace_id" ;;
+      empty)    skips "herdr worktree list shape" "no worktrees registered here" ;;
+      none-open) skips "herdr worktree list .open_workspace_id" \
+                   "every worktree here is closed, so the field is legitimately absent — re-run from a repo with a worktree open in herdr to assert it" ;;
+      *)        bad "herdr worktree list dropped .path/.open_workspace_id" "got: $shape — remove.sh cannot find the workspace to close" ;;
     esac
   else
     bad "herdr worktree list --cwd --json failed or is not the expected envelope" "remove.sh's workspace cleanup breaks"
