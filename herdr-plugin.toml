@@ -1,6 +1,6 @@
 id = "gren"
 name = "gren"
-version = "0.1.0"
+version = "0.1.1"
 min_herdr_version = "0.7.0"
 description = "Create, switch, and remove git worktrees via gren — with gren's post-create setup"
 platforms = ["macos", "linux"]
