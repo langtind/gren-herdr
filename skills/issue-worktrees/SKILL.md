@@ -95,6 +95,34 @@ The user announcing that work on an issue is starting — "we're fixing ABC-123"
 
    Recovering from that is a read, never a resend: `herdr agent list` for the status, `herdr agent read <name> --source recent-unwrapped --lines 120` for what it is asking. Re-sending duplicates the brief.
 
+   **A skill the prompt only *names* does not load.** Measured 2026-09-01 on VID-945: the
+   brief said "Bruk /vidd-tdd" in its own text and a SessionStart hook injected "invoke
+   `pstack:poteto-mode` and follow it". The agent read both and invoked **neither** — 19
+   Bash calls, zero Skill calls, across a whole task. Third instance of the class already
+   in Vidd's effectiveness log ("a worker had `vidd-test-rig` available the whole time and
+   loaded it only after a long detour"). An instruction to load a skill is a suggestion the
+   model weighs; it is not a load.
+
+   **So lead the prompt with the skill, as the literal first token.** Claude Code expands a
+   leading `/skill` at the harness level, before the model sees the turn — it is the one
+   path that does not depend on the model agreeing:
+
+   ```bash
+   prompt=$(printf '%s\n%s' "/pstack:poteto-mode" "$brief")
+   ```
+
+   Stacking works too (the harness expands the first skill plus up to five more), and the
+   trailing text reaches each as `$ARGUMENTS`: `/vidd-tdd /pstack:poteto-mode <brief>`.
+   Only stack skills the task actually needs — each one loaded is context spent for the
+   rest of the session.
+
+   Which skill leads is the **project's** call, not this skill's: a repo with pstack
+   enabled leads with `/pstack:poteto-mode`, one with its own method leads with that, and a
+   repo with neither sends the brief bare. Read it from the caller's instruction; never
+   invent one. When the leading skill does not exist in that repo, Claude Code passes the
+   text through unexpanded, so a wrong guess is silently a no-op — verify the name resolves
+   before relying on it.
+
    **Build the prompt in a variable; never paste tracker text straight into the command line.** Issue titles and descriptions routinely contain `"`, backticks, and `$(…)`. Inlined, a quote ends the argument and `$(…)` executes in your shell before `herdr` ever sees it — you would be running whatever the ticket says, which is not the same thing as sending it to an agent.
 
 ## Remove — "we're done with ABC-123, remove the worktree"
