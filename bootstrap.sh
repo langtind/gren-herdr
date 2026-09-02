@@ -43,23 +43,17 @@ cd "$wt" || { echo "worktree unavailable: $wt"; exit 0; }
 # Reported on TWO objects, because they fail differently:
 #   - the pane: visible immediately, but dies when this setup pane closes.
 #   - the workspace: outlives setup, which is where the port actually belongs.
-#     Needs herdr >= 0.7.4 (the subcommand does not exist before that).
 #
-# herdr renamed the pane flag in 0.7.4: --custom-status (<= 0.7.3, auto-displays)
-# became --token NAME=VALUE (>= 0.7.4, needs the user's sidebar rows to name
-# $port — reporters supply values, never layout; see README). We try the modern
-# flag and fall back, so both herdr generations get a badge. Drop the fallback
-# when min_herdr_version reaches 0.7.4.
+# --token NAME=VALUE supplies a value; the user's sidebar rows decide whether it
+# is shown, by naming $port (reporters supply values, never layout — see README).
+# The pre-0.7.4 --custom-status fallback is gone with 0.7 support.
 if [[ -n $target_pane && -n $branch ]]; then
 	port=$(gren step eval '{{ branch | hash_port }}' 2>/dev/null || true)
 	if [[ -n $port ]]; then
 		src=${HERDR_PLUGIN_ID:-gren}
 
 		"$herdr" pane report-metadata "$target_pane" \
-			--source "$src" --token "port=$port" >/dev/null 2>&1 \
-		|| "$herdr" pane report-metadata "$target_pane" \
-			--source "$src" --custom-status "port $port" >/dev/null 2>&1 \
-		|| true
+			--source "$src" --token "port=$port" >/dev/null 2>&1 || true
 
 		ws=$("$herdr" pane get "$target_pane" 2>/dev/null \
 			| jq -r '.result.pane.workspace_id // empty' 2>/dev/null || true)

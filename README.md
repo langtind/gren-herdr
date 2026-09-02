@@ -30,9 +30,8 @@ pane** via `gren hook-run --interactive`. That's a real TTY, so interactive setu
 with the worktree's own direnv-loaded shell; hooks are approved once per project
 (then remembered), and per-worktree template values like
 `{{ branch | hash_port }}` resolve. It also reports the worktree's deterministic
-dev **port** — on the pane, and on herdr ≥ 0.7.4 on the workspace too, so it
-outlives setup — though herdr ≥ 0.7.4 only *displays* it once you name `$port`
-in your sidebar rows (see
+dev **port** — on the pane, and on the workspace too, so it outlives setup —
+though herdr only *displays* it once you name `$port` in your sidebar rows (see
 [Showing the port in the sidebar](#showing-the-port-in-the-sidebar)). When
 there's no pane, it falls back to `gren hook-run` inline (captured output).
 Either way your env files, deps, and hooks are set up automatically — no extra
@@ -44,18 +43,15 @@ worktrees. Press `Enter` on a match to switch to it, or type a new name and pres
 main/master, else the current branch, like gren's TUI). Typing `pr:42` or `mr:7`
 checks out that PR/MR branch. The worktree is created at gren's configured
 `worktree_dir`, and its post-create setup runs in a pane with a real TTY (see #1).
-On **herdr ≥ 0.7.4** the picker itself opens as a session-modal **popup**, so it
-no longer rearranges your tiled layout; the setup pane it spawns is still a
-normal pane with a live TTY. herdr ≤ 0.7.3 has no popup placement, so the action
-retries as a split there.
+The picker itself opens as a session-modal **popup**, so it does not rearrange
+your tiled layout; the setup pane it spawns is still a normal pane with a live
+TTY.
 
 **3. A remove picker** (`gren.remove`): an fzf picker over removable worktrees
 (everything except the main checkout). Pick one; gren prompts for confirmation
-and runs its pre-remove hooks, then the associated herdr workspace is closed. On
-**herdr ≥ 0.7.4** it opens as a session-modal **popup**, which leaves the tiled
-layout untouched — a picker you answer and dismiss has no business rearranging
-your panes. herdr ≤ 0.7.3 has no popup placement (it errors with `invalid pane
-placement`), so the action retries as a split there.
+and runs its pre-remove hooks, then the associated herdr workspace is closed. It
+opens as a session-modal **popup**, which leaves the tiled layout untouched — a
+picker you answer and dismiss has no business rearranging your panes.
 
 > **Note on the right-click menu:** herdr's right-click "New worktree" item is
 > hardwired to herdr's own create flow, so this plugin can't *replace* it — but
@@ -69,17 +65,16 @@ placement`), so the action retries as a split there.
 [**herdr**](https://herdr.dev) on your `PATH`, plus **fzf** (the picker), **jq**
 (JSON parsing), and **bash** (the scripts run with `/bin/bash`).
 
-The plugin runs on older versions and degrades quietly rather than breaking — so
-here is what each version actually buys you:
+gren's floor is soft — the plugin degrades quietly below the recommended
+version. herdr's is hard: `min_herdr_version` refuses the install.
 
 | | Minimum | Recommended | What the newer version adds |
 |---|---|---|---|
 | **gren** | 0.11.0 | **0.19.0** | 0.15.0: `hook-run --interactive`. 0.16.0: `$REPO_ROOT` resolves to the main checkout for hooks run from a worktree. 0.18.1: `create --format=json` keeps stdout pure JSON — older versions could print a warning ahead of the payload and strand a worktree with no setup. 0.19.0: `delete --dry-run --format=json`, which the agent skill uses to ask what blocks a removal instead of running its own `git status --porcelain`. |
-| **herdr** | 0.7.0 | **0.7.4** | Pickers open as popups instead of rearranging your layout, and the per-worktree port is reported on the workspace so it outlives setup ([config needed](#showing-the-port-in-the-sidebar)). |
+| **herdr** | 0.8.0 | **0.8.2** | 0.8.0 is enforced by `min_herdr_version`; below it the plugin will not install. 0.8.2: `agent prompt` rejects an already-blocked agent with `agent_blocked` instead of typing into its dialog — the agent skill's step 6 states that as fact. |
 
-Below the recommended versions everything still works, minus those features:
-interactive hooks (1Password `op`, `make seed`) need gren ≥ 0.16.0, and the
-pickers fall back to split panes on herdr ≤ 0.7.3.
+Below gren's recommended version everything still works, minus those features —
+interactive hooks (1Password `op`, `make seed`) need gren ≥ 0.16.0.
 
 `gren init` is **optional**: since gren 0.11.0 it works on any git repo with
 defaults (worktrees under `../<repo>-worktrees`, no hooks), so the picker creates
@@ -106,9 +101,8 @@ herdr plugin link /path/to/gren-herdr
 ```
 
 That's the whole install — worktree setup runs automatically from here. Two
-optional extras: bind the pickers to keys ([Keybindings](#keybindings)), and, on
-herdr ≥ 0.7.4, add one line of config to see each worktree's dev port in the
-sidebar ([Showing the port in the sidebar](#showing-the-port-in-the-sidebar)) —
+optional extras: bind the pickers to keys ([Keybindings](#keybindings)), and add
+one line of config to see each worktree's dev port in the sidebar ([Showing the port in the sidebar](#showing-the-port-in-the-sidebar)) —
 herdr never displays custom values unless you ask it to.
 
 ## Usage
@@ -206,8 +200,7 @@ project with per-worktree resources that means orphaned databases/namespaces/por
   port in 10000–19999) and `{{ branch | sanitize_db }}` in your hooks to give each
   worktree its own dev server port and database, so parallel worktrees don't
   collide. The setup pane reports the resolved port on the pane and the workspace
-  ([showing it](#showing-the-port-in-the-sidebar) needs a sidebar row on herdr
-  ≥ 0.7.4). Note: `hash_port` can *rarely* collide (two branches → same port); if
+  ([showing it](#showing-the-port-in-the-sidebar) needs a sidebar row). Note: `hash_port` can *rarely* collide (two branches → same port); if
   that bites, derive the port with `gren step eval` and probe for the next free one.
 - **Branch on auto-setup.** herdr's `worktree.created` event carries the new
   checkout path but not the branch name, so the setup hook recovers the branch
@@ -225,10 +218,10 @@ project with per-worktree resources that means orphaned databases/namespaces/por
 
 Each worktree gets a deterministic dev port (`{{ branch | hash_port }}`). The
 setup pane reports it in two places: on **its own pane** (visible immediately,
-but gone once setup closes) and — on **herdr ≥ 0.7.4** — as a `port` metadata
-token on the worktree's **workspace**, which lasts as long as the worktree does.
+but gone once setup closes) and as a `port` metadata token on the worktree's
+**workspace**, which lasts as long as the worktree does.
 
-On herdr ≥ 0.7.4 **neither is displayed until you ask for it.** A metadata
+**Neither is displayed until you ask for it.** A metadata
 reporter supplies values only; it cannot choose rows or styling, and *unreported
 tokens simply disappear*. herdr's default Space rows are `["state_icon",
 "workspace"]` / `["branch", "git_status"]`, which name no custom token — so the
@@ -245,12 +238,11 @@ rows = [
 
 Nothing breaks without it — the port is simply reported and unused.
 
-> **Version note.** herdr 0.7.4 renamed the pane flag: `--custom-status`
-> (≤ 0.7.3, which *did* display automatically) became `--token NAME=VALUE`. The
-> plugin tries `--token` and falls back, so both generations get a badge, and
-> `min_herdr_version` stays at `0.7.0`. On < 0.7.4 the workspace report is
-> skipped entirely. `tests/contract_test.sh` asserts at least one badge flag
-> still parses — it is what caught this rename.
+> **Why you have to name it.** herdr 0.7.4 replaced `--custom-status` (which
+> *did* display automatically) with `--token NAME=VALUE`, moving the layout
+> decision to you. `tests/contract_test.sh` asserts `--token` still parses — it
+> is what caught that rename, and the pre-0.7.4 fallback is gone with 0.7
+> support.
 
 ## Development
 

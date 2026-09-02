@@ -46,7 +46,7 @@ The user announcing that work on an issue is starting — "we're fixing ABC-123"
 
      **On a non-zero exit the pane tail will not tell you why.** gren captures hook stdout unless `hook-run` gets `--interactive`/`--tty` (inherited stdio), so a failing hook prints only the phase list it reconstructs from the events file — `⊘ bootstrap — hook exited before phase completed` — even when the sub-script wrote a precise, actionable error. The events ndjson gren points at holds phase start/ok records, not output, so it adds nothing. To get the real cause, **re-run the failing phase's command directly from the worktree** — the phase line names it (e.g. `worktree-bootstrap.sh --name <name>`) — and read its output. Report that; the phase list on its own is not a diagnosis.
 
-     > **herdr's CLI shifts between minor versions, and this skill will lag it.** `herdr --skill` prints the reference that ships *with the installed binary* — argument shapes, output keys, wait semantics. Read it when a command errors with `unknown option` or an unexpected shape, before assuming the recipe here is right. Two moves already: 0.7.5 put the waiter under `pane` (`herdr wait output` → `herdr pane wait-output`), and 0.8.0 moved `pane process-info` to a `--pane <ID>` flag while leaving `pane run` and `pane wait-output` positional. Verified against 0.8.0 on 2026-08-18.
+     > **herdr's CLI shifts between minor versions, and this skill will lag it.** `herdr --skill` prints the reference that ships *with the installed binary* — argument shapes, output keys, wait semantics. Read it when a command errors with `unknown option` or an unexpected shape, before assuming the recipe here is right. It has already moved twice inside 0.8: `pane process-info` took a `--pane <ID>` flag while `pane run` and `pane wait-output` stayed positional, and `agent prompt` learned to reject a blocked agent outright. Verified against 0.8.2 on 2026-09-02.
 
      `--interactive` is **gren's** flag, on the `hook-run` command inside the quoted string — add it only when the hook is interactive, then tell the user the pane is waiting for their input (an approval prompt is part of `--interactive`) and wait on the sentinel the same way, with a generous timeout. It is *not* a herdr flag: `herdr pane run` takes no options at all (`herdr pane run <PANE_ID> <COMMAND>...`), so a stray `--interactive` there is parsed as the pane id and fails with `pane_not_found`. Verify the command actually submitted — long strings can stall as a paste placeholder.
 
@@ -55,7 +55,7 @@ The user announcing that work on an issue is starting — "we're fixing ABC-123"
 
    Setup may be skipped only when the user explicitly says to skip it — then say so when reporting, so a later build failure isn't a mystery.
 
-5. **Start Claude in the worktree's pane.** Always, in herdr ≥ 0.7.5 — a worktree without an agent in it is half-delivered. After the sentinel reports `-EXIT-0` the pane is back at its shell prompt, which is exactly what `agent start` requires:
+5. **Start Claude in the worktree's pane.** Always — a worktree without an agent in it is half-delivered. After the sentinel reports `-EXIT-0` the pane is back at its shell prompt, which is exactly what `agent start` requires:
    ```bash
    agent_name="<repo>/<branch>"
    herdr agent start "$agent_name" --kind claude --pane "<pane_id>"
@@ -77,7 +77,7 @@ The user announcing that work on an issue is starting — "we're fixing ABC-123"
 
    `herdr agent rename` does **not** touch the Claude Code side — that session keeps its directory-derived peer name (`fix-2028-composer-stale-pointer-04`) until someone runs `/name` in it. Send the same slug to both so one string addresses the agent from either direction. `/name` is a prompt like any other, so it falls under step 6's gate: ask first, unless the user already asked for the agent to be set up.
 
-   Skip only when herdr is absent or below 0.7.5 — then say so, and hand the user the path.
+   Skip only when herdr is absent — then say so, and hand the user the path.
 
 6. **The first prompt is the user's, not yours.** Look at the message that asked for the worktree:
    - **It already said what the agent should do** ("create a worktree for #123 and have it start on the backend part") → send that, no question.
@@ -228,9 +228,9 @@ Then tell the user which branch to pick in the picker. Don't replicate the flow 
 | Waiting for setup by polling `pane read \| grep` for prompt glyphs or guessed phrases ("completed", `❯ $`) | Append `; echo SETUP-a1-EXIT-\$?` to the command and `herdr pane wait-output <pane_id> --regex 'SETUP-a1-EXIT-[0-9]+'` — gren has no success marker and prompt glyphs vary, so scraping hangs forever |
 | Re-running setup in the same pane with the same sentinel tag | Bump it (`a1`→`a2`). `wait-output` reads the scrollback and will match the *previous* attempt's sentinel, so a fixed setup still reports the old failure. Not fixable with a shell variable — each Bash call is a new shell |
 | Reporting `⊘ <phase> — hook exited before phase completed` as the failure reason | That is gren's phase list, not a diagnosis — it hides hook stdout without `--interactive`. Re-run that phase's command directly from the worktree and report *its* error |
-| `herdr wait output …` | Removed in 0.7.5. The waiters are now `herdr pane wait-output <pane_id> --regex '<pattern>'` and `herdr agent wait <target> --until <status>`. `--regex` takes the pattern; there is no separate `--match` alongside it |
+| `herdr wait output …` | Not a command. The waiters are `herdr pane wait-output <pane_id> --regex '<pattern>'` and `herdr agent wait <target> --until <status>`. `--regex` takes the pattern; there is no separate `--match` alongside it |
 | `pane run` into a pane without checking what's running there | `pane run` types into the foreground program. After handoff the user may have an agent in that pane — your command becomes its prompt. Check `herdr pane process-info --pane <id>` unless you *just* opened the pane |
-| Reporting the worktree as done with an empty shell in its pane | Step 5 is not optional. `herdr agent start "<repo>/<branch>" --kind claude --pane <id>` runs every time herdr ≥ 0.7.5 is available |
+| Reporting the worktree as done with an empty shell in its pane | Step 5 is not optional. `herdr agent start "<repo>/<branch>" --kind claude --pane <id>` runs every time herdr is present |
 | Blocking on `agent prompt --wait` until the agent settles | The hand-off ends at the receipt. `--until working --timeout 15000` returns in a second; the default settled set waits out the agent's whole first turn while the orchestrator can neither report nor answer the user. Raising the timeout lengthens the hang, it does not fix it |
 | Waiting on anything without naming what the result changes | If nothing downstream reads it, it is dead time, not a check |
 | Sending the agent its first prompt without being asked to | Step 6. Unless the request that created the worktree already said what the agent should do, ask and **wait for the answer**. The issue existing is not an instruction |
