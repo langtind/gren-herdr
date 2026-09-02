@@ -89,11 +89,84 @@ The user announcing that work on an issue is starting — "we're fixing ABC-123"
    <issue title + link + what to do>
    PROMPT
    )
-   herdr agent prompt "$agent_name" "$prompt" --wait --timeout 600000
+   herdr agent prompt "$agent_name" "$prompt" --wait --until working --timeout 15000
    ```
-   **Pass `--timeout`.** `--wait` waits for the first *settled* state (`idle`, `done`, `blocked`); omitting the timeout waits indefinitely. The five-second `agent_prompt_stalled` guard only fires when no lifecycle change is observed at all — it catches a submission that never landed, not a turn that takes a while. A first turn that reads a tracker issue and explores the repo legitimately runs for minutes, so a caller-side timeout shorter than the turn (a Bash-tool limit, say) kills the wait and *looks* like a hang. Observed 2026-08-18: the prompt had landed and the agent went `blocked` on a question of its own; only the waiter was cut short.
+   **Wait for the receipt, never for the turn.** `--until working` overrides the
+   default settled set (`idle`, `done`, `blocked`) and matches the moment the agent
+   picks the prompt up. That is the only fact step 6 needs, and it arrives in about a
+   second. A bare `--wait` waits for the agent to *finish* — but step 6 is the last
+   step in this flow, so nothing downstream consumes that settled state. Every second
+   past the receipt is the orchestrating session frozen inside a tool call, unable to
+   report the hand-off or answer the user, while the agent it is waiting on works
+   perfectly well. Keep `--timeout` above 5000 so a stalled submission is reported as
+   `agent_prompt_stalled` rather than degraded to a bare `timeout` — the two are not
+   the same finding, and only the named one tells you what to do next.
 
-   Recovering from that is a read, never a resend: `herdr agent list` for the status, `herdr agent read <name> --source recent-unwrapped --lines 120` for what it is asking. Re-sending duplicates the brief.
+   **The receipt is only real because the agent is settled when you send.** `herdr`
+   does not track turns: "if the agent is already working, that active turn's
+   completion may match". Against an already-working agent, `--until working` matches
+   the turn it was already in, so you get an instant success that proves nothing about
+   your prompt. Step 5 leaves the agent idle, which is what makes this safe here — an
+   already-`blocked` agent is rejected outright with `agent_blocked`. Re-prompting a
+   working agent is a different situation, and this receipt does not apply to it.
+
+   **This reverses what this skill used to conclude, and the correction is the
+   point.** The 2026-08-18 observation was real — the prompt had landed and the agent
+   went `blocked` on a question of its own; only the waiter was cut short — but it was
+   written up here as "pass a bigger `--timeout`". A bigger timeout makes the hang
+   longer, not rarer. What the observation actually shows is that the wait had done
+   its entire job seconds in, and everything after that was the orchestrator paying
+   for information it never used. Observed again 2026-09-02 on flyt#2419, with
+   `--timeout 540000`: the user interrupted a nine-minute block over an agent that was
+   already eleven minutes into the work.
+
+   Generalise it past this command: **before waiting on anything, name what you will
+   do differently with the result.** If the answer is "nothing, this is the last
+   step", the wait is not a check — it is dead time wearing a check's clothes.
+
+   **Recovering from `agent_prompt_stalled` starts with a read, and the read decides
+   whether to resend.** `herdr agent list` for the status, `herdr agent read <name>
+   --source recent-unwrapped --lines 120` for what the agent has. Then:
+
+   - **The brief is there** — it landed and the agent simply did not change state
+     within the 5s window, or it went `blocked` on a question of its own. Answer the
+     question or leave it be. Resending here duplicates the brief, which is the 2026-08-18
+     failure.
+   - **The brief is not there at all** — send it again. It is the only copy.
+
+   Do not skip the read in either direction. `agent_prompt_stalled` follows a submission
+   herdr *accepted* (an already-`blocked` agent is rejected earlier, with `agent_blocked`),
+   so the text usually did land and a reflexive resend duplicates it — but "usually" is
+   not "always", and a blanket never-resend can leave an agent sitting with no brief while
+   you report the hand-off as done. The read costs one command and distinguishes the two.
+
+   **A skill the prompt only *names* does not load.** Measured 2026-09-01 on VID-945: the
+   brief said "Bruk /vidd-tdd" in its own text and a SessionStart hook injected "invoke
+   `pstack:poteto-mode` and follow it". The agent read both and invoked **neither** — 19
+   Bash calls, zero Skill calls, across a whole task. Third instance of the class already
+   in Vidd's effectiveness log ("a worker had `vidd-test-rig` available the whole time and
+   loaded it only after a long detour"). An instruction to load a skill is a suggestion the
+   model weighs; it is not a load.
+
+   **So lead the prompt with the skill, as the literal first token.** Claude Code expands a
+   leading `/skill` at the harness level, before the model sees the turn — it is the one
+   path that does not depend on the model agreeing:
+
+   ```bash
+   prompt=$(printf '%s\n%s' "/pstack:poteto-mode" "$brief")
+   ```
+
+   Stacking works too (the harness expands the first skill plus up to five more), and the
+   trailing text reaches each as `$ARGUMENTS`: `/vidd-tdd /pstack:poteto-mode <brief>`.
+   Only stack skills the task actually needs — each one loaded is context spent for the
+   rest of the session.
+
+   Which skill leads is the **project's** call, not this skill's: a repo with pstack
+   enabled leads with `/pstack:poteto-mode`, one with its own method leads with that, and a
+   repo with neither sends the brief bare. Read it from the caller's instruction; never
+   invent one. When the leading skill does not exist in that repo, Claude Code passes the
+   text through unexpanded, so a wrong guess is silently a no-op — verify the name resolves
+   before relying on it.
 
    **Build the prompt in a variable; never paste tracker text straight into the command line.** Issue titles and descriptions routinely contain `"`, backticks, and `$(…)`. Inlined, a quote ends the argument and `$(…)` executes in your shell before `herdr` ever sees it — you would be running whatever the ticket says, which is not the same thing as sending it to an agent.
 
@@ -158,6 +231,8 @@ Then tell the user which branch to pick in the picker. Don't replicate the flow 
 | `herdr wait output …` | Removed in 0.7.5. The waiters are now `herdr pane wait-output <pane_id> --regex '<pattern>'` and `herdr agent wait <target> --until <status>`. `--regex` takes the pattern; there is no separate `--match` alongside it |
 | `pane run` into a pane without checking what's running there | `pane run` types into the foreground program. After handoff the user may have an agent in that pane — your command becomes its prompt. Check `herdr pane process-info --pane <id>` unless you *just* opened the pane |
 | Reporting the worktree as done with an empty shell in its pane | Step 5 is not optional. `herdr agent start "<repo>/<branch>" --kind claude --pane <id>` runs every time herdr ≥ 0.7.5 is available |
+| Blocking on `agent prompt --wait` until the agent settles | The hand-off ends at the receipt. `--until working --timeout 15000` returns in a second; the default settled set waits out the agent's whole first turn while the orchestrator can neither report nor answer the user. Raising the timeout lengthens the hang, it does not fix it |
+| Waiting on anything without naming what the result changes | If nothing downstream reads it, it is dead time, not a check |
 | Sending the agent its first prompt without being asked to | Step 6. Unless the request that created the worktree already said what the agent should do, ask and **wait for the answer**. The issue existing is not an instruction |
 | Starting an agent with `pane run "claude"` and scraping for a prompt glyph | `herdr agent start <name> --kind claude --pane <id>` — it requires a shell prompt, validates the kind, and succeeds only once the agent is detected and ready |
 | Passing the branch name to `agent start` | Rejected: `^[a-z][a-z0-9_-]{0,31}$`, no slashes, ≤32 chars. Use `<repo>-<issue>-<short-slug>` (`flyt-2028-composer`) |
