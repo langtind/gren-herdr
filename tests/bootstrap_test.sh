@@ -7,10 +7,9 @@
 # binaries. Keep that split in mind: a green run here means "bootstrap.sh calls
 # herdr the way we intend", not "herdr accepts these flags".
 #
-# Focus: the port-metadata block. It must (1) badge the pane with --custom-status
-# for herdr 0.7.3, AND (2) additionally report a port=<n> workspace token for
-# 0.7.4, resolving the workspace via `herdr pane get`. Both are best-effort and
-# must never make the script fail.
+# Focus: the port-metadata block. It must badge the pane with a port=<n> token AND
+# report the same token on the workspace, resolving the workspace via `herdr pane
+# get`. Both are best-effort and must never make the script fail.
 set -uo pipefail
 
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -51,9 +50,10 @@ esac
 exit 0
 STUB
 
-# herdr stub: records each invocation; `pane get` answers with the workspace id
-# so the 0.7.4 branch can resolve a target workspace. Rejects --custom-status the
-# way real 0.7.4 does, so the badge must go through --token here.
+# herdr stub: records each invocation; `pane get` answers with the workspace id so
+# the script can resolve a target workspace. Rejects --custom-status the way every
+# supported herdr does — the flag was replaced by --token in 0.7.4 and 0.7 is no
+# longer supported, so a call carrying it is a bug, not a fallback.
 cat >"$stubs/herdr" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >>"$state/herdr-calls"
@@ -73,58 +73,36 @@ PATH="$stubs:$PATH" HERDR_BIN_PATH="$stubs/herdr" HERDR_PLUGIN_ID=gren \
   bash "$here/../bootstrap.sh" </dev/null >"$state/out" 2>&1
 check "bootstrap exits 0" 0 $?
 
-# 1. Pane badge via the modern flag — this stub rejects --custom-status like 0.7.4.
+# 1. Pane badge goes through --token; the stub rejects --custom-status.
 grep -qF -- "pane report-metadata paneZ --source gren --token port=4242" "$state/herdr-calls"
-check "pane badge reported with --token on herdr 0.7.4" 0 $?
+check "pane badge reported with --token" 0 $?
+
+# 1b. And --custom-status is never attempted. The 0.7.3 fallback was removed with
+# 0.7 support; re-adding it would send a flag no supported herdr accepts.
+if ! grep -q -- "--custom-status" "$state/herdr-calls"; then
+  printf 'ok: no --custom-status fallback attempted\n'
+else
+  printf 'FAIL: bootstrap still falls back to --custom-status\n'; fail=1
+fi
 
 # 2. Workspace resolved via pane get, using the target pane.
 grep -qF -- "pane get paneZ" "$state/herdr-calls"
 check "workspace resolved from the target pane" 0 $?
 
-# 3. Workspace port token (0.7.4 path) — reported on the resolved workspace.
+# 3. Workspace port token — reported on the resolved workspace.
 grep -qF -- "workspace report-metadata wsX --source gren --token port=4242" "$state/herdr-calls"
-check "workspace port token reported (0.7.4)" 0 $?
+check "workspace port token reported" 0 $?
 
 # 4. Setup still runs: gren hook-run is invoked for the worktree.
 grep -qF -- "hook-run --type post-create" "$state/gren-calls"
 check "gren post-create hook still runs" 0 $?
-
-# --- dual-path: an OLD herdr (0.7.3) rejects --token; the badge must fall back to
-# --custom-status. Without this the 0.7.4 flag rename would silently strip the
-# badge from every 0.7.3 user, which is the failure this fallback exists for.
-: >"$state/herdr-calls"
-cat >"$stubs/herdr" <<STUB
-#!/usr/bin/env bash
-printf '%s\n' "\$*" >>"$state/herdr-calls"
-# 0.7.3: no --token anywhere, and no workspace report-metadata subcommand.
-if [[ "\$*" == *--token* ]]; then
-  echo "unknown option: --token" >&2; exit 2
-fi
-if [[ "\$1" == "workspace" && "\$2" == "report-metadata" ]]; then
-  echo "herdr workspace commands:" >&2; exit 2
-fi
-if [[ "\$1" == "pane" && "\$2" == "get" ]]; then
-  printf '{"result":{"pane":{"workspace_id":"wsX"}}}\n'
-fi
-exit 0
-STUB
-chmod +x "$stubs/herdr"
-
-PATH="$stubs:$PATH" HERDR_BIN_PATH="$stubs/herdr" HERDR_PLUGIN_ID=gren \
-  GREN_HERDR_WORKTREE="$wt" GREN_HERDR_BRANCH="feat/x" \
-  GREN_HERDR_REPO_ROOT="$repo" GREN_HERDR_TARGET_PANE="paneZ" \
-  bash "$here/../bootstrap.sh" </dev/null >"$state/out3" 2>&1
-check "bootstrap exits 0 on herdr 0.7.3" 0 $?
-
-grep -qF -- "pane report-metadata paneZ --source gren --custom-status port 4242" "$state/herdr-calls"
-check "pane badge falls back to --custom-status on herdr 0.7.3" 0 $?
 
 # --- resilience: a broken `pane get` must not skip the badge or fail the run ---
 : >"$state/herdr-calls"
 cat >"$stubs/herdr" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >>"$state/herdr-calls"
-# pane get returns garbage (no workspace_id) — the 0.7.4 branch must give up
+# pane get returns garbage (no workspace_id) — the workspace report must give up
 # quietly, and the script must still finish.
 if [[ "\$1" == "pane" && "\$2" == "get" ]]; then printf 'not json\n'; fi
 exit 0

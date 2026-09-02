@@ -15,8 +15,8 @@
 #   - Never mutate the caller's live herdr session. We probe flag PARSING by
 #     targeting bogus ids: a "not found" error means the flags parsed and
 #     reached the server; "unknown option" means the contract is broken.
-#   - Version-gated contracts (herdr >= 0.7.4 workspace metadata) SKIP loudly on
-#     older herdr rather than silently passing.
+#   - A contract the plugin's declared floor guarantees FAILS when absent; only
+#     genuinely optional ones skip, and they skip loudly.
 set -uo pipefail
 
 herdr=${HERDR_BIN_PATH:-herdr}
@@ -128,36 +128,33 @@ else
     bad "herdr pane get is not the expected JSON envelope" "got: $(printf '%s' "$out" | head -c 120)"
   fi
 
-  # pane report-metadata: the badge tries --token (>= 0.7.4) and falls back to
-  # --custom-status (<= 0.7.3). AT LEAST ONE must parse, or the badge silently
-  # vanishes — which is exactly what 0.7.4 did when it renamed the flag. Target a
-  # bogus pane so nothing real is mutated: "not found" proves the flags parsed
-  # and reached the server; "unknown option" means the flag is gone.
+  # pane report-metadata: the badge goes through --token. There is no fallback any
+  # more — --custom-status was the <= 0.7.3 spelling, and 0.7 is no longer
+  # supported — so this flag parsing IS the badge. Target a bogus pane so nothing
+  # real is mutated: "not found" proves the flags parsed and reached the server;
+  # "unknown option" means the flag is gone and the badge silently no-ops.
   parses() { # flag-args… → 0 if herdr accepted the flags
     local out
     out=$("$herdr" pane report-metadata "no-such:pane" --source contract-test "$@" 2>&1 || true)
     printf '%s' "$out" | grep -qiE 'pane_not_found|not found'
   }
-  tok=1 cus=1
-  parses --token "port=1"        || tok=0
-  parses --custom-status "port 1" || cus=0
-  if [[ $tok -eq 1 || $cus -eq 1 ]]; then
-    ok "herdr pane report-metadata badge flag parses (--token=$tok --custom-status=$cus)"
+  if parses --token "port=1"; then
+    ok "herdr pane report-metadata --token parses"
   else
-    bad "herdr pane report-metadata accepts NEITHER --token nor --custom-status" \
+    bad "herdr pane report-metadata rejects --token" \
         "bootstrap.sh's pane badge silently no-ops — check 'herdr pane report-metadata' usage"
   fi
 
-  # Version-gated: workspace report-metadata + --token is the herdr >= 0.7.4
-  # contract the new port-on-workspace code depends on. On 0.7.3 the subcommand
-  # is absent (prints `workspace` usage) — SKIP loudly, don't pass silently.
+  # workspace report-metadata + --token is the contract the port-on-workspace code
+  # depends on. Absent only on herdr the plugin now refuses to install on, so an
+  # absent subcommand here is a real finding rather than an old-version skip.
   out=$("$herdr" workspace report-metadata "no-such-ws" --source contract-test --token "port=1" 2>&1 || true)
   if printf '%s' "$out" | grep -qiE 'workspace_not_found|not found'; then
-    ok "herdr workspace report-metadata --source/--token parse (0.7.4 port token)"
+    ok "herdr workspace report-metadata --source/--token parse (port token)"
   elif printf '%s' "$out" | grep -qiE 'unknown option: --token|unknown option: --source'; then
-    bad "herdr workspace report-metadata rejects --source/--token" "got: $out — the 0.7.4 port-on-workspace code is wrong"
+    bad "herdr workspace report-metadata rejects --source/--token" "got: $out — the port-on-workspace code is wrong"
   elif printf '%s' "$out" | grep -qiE 'herdr workspace commands|unknown (sub)?command|usage'; then
-    skips "herdr workspace report-metadata (herdr >= 0.7.4)" "not in this herdr ($("$herdr" --version 2>/dev/null | head -1)); port token no-ops, as designed"
+    bad "herdr workspace report-metadata is missing" "not in this herdr ($("$herdr" --version 2>/dev/null | head -1)) — below the 0.8.0 floor the plugin declares"
   else
     skips "herdr workspace report-metadata" "inconclusive: $(printf '%s' "$out" | head -c 120)"
   fi
@@ -225,9 +222,8 @@ else
   # --- skills/issue-worktrees contracts ------------------------------------
   # The skill is shipped from this repo and drives herdr by hand, so its
   # commands drift exactly like the scripts' do — and nothing else asserts them.
-  # herdr 0.7.5 removed the top-level `wait` the skill used to document; the
-  # failure mode was an agent hanging on "unknown command" forever, which no
-  # stub test could see.
+  # A removed top-level `wait` the skill used to document once cost an agent
+  # hanging on "unknown command" forever — which no stub test could see.
 
   # pane wait-output — the sentinel waiter after `gren hook-run`. A bogus pane
   # returns pane_not_found only if the subcommand AND its flags parsed.
@@ -238,7 +234,7 @@ else
   # contract, which is the one outcome worse than a red one here.
   out=$("$herdr" pane wait-output "no-such:pane" --regex 'CT-[0-9]+' --timeout 1 2>&1 || true)
   if printf '%s' "$out" | grep -q 'pane_not_found'; then
-    ok "herdr pane wait-output --regex/--timeout parse (0.7.5 sentinel waiter)"
+    ok "herdr pane wait-output --regex/--timeout parse (sentinel waiter)"
   elif printf '%s' "$out" | grep -qiE 'unknown (sub)?command|unknown option|herdr pane commands'; then
     bad "herdr pane wait-output is gone or renamed" \
         "got: $(printf '%s' "$out" | head -c 120) — skills/issue-worktrees waits on a command that does not exist"
@@ -246,16 +242,15 @@ else
     skips "herdr pane wait-output" "inconclusive: $(printf '%s' "$out" | head -c 120)"
   fi
 
-  # agent start/wait — the 0.7.5 handoff step. Version-gated: absent before
-  # 0.7.5, so SKIP loudly there rather than passing silently. The skip is
-  # gated on the command being ABSENT (older herdr prints its `herdr agent
-  # commands:` list); a rejected flag prints usage too, and that must fail —
-  # it is exactly the drift this test exists to catch.
+  # agent start/wait — the handoff step. The 0.8.0 floor guarantees it, so an
+  # absent subcommand is a finding, not a skip. Keep the ABSENT case distinct
+  # from a rejected flag (both print usage): the flag case is the drift this
+  # test exists to catch.
   out=$("$herdr" agent start ct-name --kind claude --pane "no-such:pane" 2>&1 || true)
   if printf '%s' "$out" | grep -q 'agent_pane_not_found'; then
-    ok "herdr agent start --kind/--pane parse (0.7.5 agent handoff)"
+    ok "herdr agent start --kind/--pane parse (agent handoff)"
   elif printf '%s' "$out" | grep -qiE 'unknown (sub)?command|herdr agent commands'; then
-    skips "herdr agent start (herdr >= 0.7.5)" "not in this herdr ($("$herdr" --version 2>/dev/null | head -1)); the skill's step 5 does not apply"
+    bad "herdr agent start is missing" "not in this herdr ($("$herdr" --version 2>/dev/null | head -1)) — below the 0.8.0 floor the plugin declares; the skill's step 5 cannot work"
   else
     bad "herdr agent start rejects --kind/--pane" "got: $(printf '%s' "$out" | head -c 120) — the skill's agent handoff is wrong"
   fi
