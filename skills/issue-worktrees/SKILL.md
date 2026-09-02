@@ -98,8 +98,9 @@ The user announcing that work on an issue is starting — "we're fixing ABC-123"
    step in this flow, so nothing downstream consumes that settled state. Every second
    past the receipt is the orchestrating session frozen inside a tool call, unable to
    report the hand-off or answer the user, while the agent it is waiting on works
-   perfectly well. Keep `--timeout` above 5000 so a submission that never landed comes
-   back as `agent_prompt_stalled` rather than as a bare `timeout`.
+   perfectly well. Keep `--timeout` above 5000 so a stalled submission is reported as
+   `agent_prompt_stalled` rather than degraded to a bare `timeout` — the two are not
+   the same finding, and only the named one tells you what to do next.
 
    **The receipt is only real because the agent is settled when you send.** `herdr`
    does not track turns: "if the agent is already working, that active turn's
@@ -123,9 +124,21 @@ The user announcing that work on an issue is starting — "we're fixing ABC-123"
    do differently with the result.** If the answer is "nothing, this is the last
    step", the wait is not a check — it is dead time wearing a check's clothes.
 
-   Recovering from `agent_prompt_stalled` is a read, never a resend: `herdr agent list`
-   for the status, `herdr agent read <name> --source recent-unwrapped --lines 120` for
-   what it is asking. Re-sending duplicates the brief.
+   **Recovering from `agent_prompt_stalled` starts with a read, and the read decides
+   whether to resend.** `herdr agent list` for the status, `herdr agent read <name>
+   --source recent-unwrapped --lines 120` for what the agent has. Then:
+
+   - **The brief is there** — it landed and the agent simply did not change state
+     within the 5s window, or it went `blocked` on a question of its own. Answer the
+     question or leave it be. Resending here duplicates the brief, which is the 2026-08-18
+     failure.
+   - **The brief is not there at all** — send it again. It is the only copy.
+
+   Do not skip the read in either direction. `agent_prompt_stalled` follows a submission
+   herdr *accepted* (an already-`blocked` agent is rejected earlier, with `agent_blocked`),
+   so the text usually did land and a reflexive resend duplicates it — but "usually" is
+   not "always", and a blanket never-resend can leave an agent sitting with no brief while
+   you report the hand-off as done. The read costs one command and distinguishes the two.
 
    **A skill the prompt only *names* does not load.** Measured 2026-09-01 on VID-945: the
    brief said "Bruk /vidd-tdd" in its own text and a SessionStart hook injected "invoke
