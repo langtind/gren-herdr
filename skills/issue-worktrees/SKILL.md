@@ -1,6 +1,6 @@
 ---
 name: issue-worktrees
-description: Use when the user starts work on an issue or ticket in a repo that uses gren worktrees — "we're fixing ABC-123", "let's take ABC-123", in any language — or explicitly asks to create or remove a worktree ("create a worktree for #123", "clean up, remove the worktree"). Applies whenever the gren CLI is available, with or without herdr (HERDR_ENV=1).
+description: Use when the user starts work on an issue or ticket in a repo that uses gren worktrees — "we're fixing ABC-123", "let's take ABC-123", in any language — or explicitly asks to create or remove a worktree ("create a worktree for #123", "clean up, remove the worktree"). Applies whenever the gren CLI is available, with or without herdr (HERDR_ENV=1) or the Herdr app (HC_TERMINAL_ID).
 ---
 
 # Issue worktrees (gren + herdr)
@@ -8,6 +8,16 @@ description: Use when the user starts work on an issue or ticket in a repo that 
 Chat-driven equivalent of the gren-herdr plugin's pickers (`prefix+shift+g` create / `prefix+shift+d` remove): derive the branch name from the issue, create or remove with gren, keep herdr's sidebar in sync.
 
 **REQUIRED BACKGROUND:** the `gren` skill (create flags, hook caveats, herdr registration) and the `herdr` skill (CLI). This skill only adds the issue→branch naming and the create/remove orchestration.
+
+**Which herdr?** Two different products are called herdr, and their CLIs do not talk to each other:
+
+| Pane has | You are in | Steps 3–6 and Remove |
+| --- | --- | --- |
+| `HERDR_ENV=1` | herdr, the terminal multiplexer (`herdr` CLI) | as written below |
+| `HC_TERMINAL_ID` | the Herdr app (`dev.herdr.app`: `herdr-app` for the window, `hc` for terminals) | [In the Herdr app](#in-the-herdr-app-hc_terminal_id-set) instead |
+| neither | plain terminal | steps 1, 2 and 4 only; hand the user the path |
+
+Inside the Herdr app a `herdr` binary may still be on PATH and answer, from another app's server: what it lists and opens is not the window the user is looking at.
 
 ## When this fires
 
@@ -169,6 +179,73 @@ The user announcing that work on an issue is starting — "we're fixing ABC-123"
    before relying on it.
 
    **Build the prompt in a variable; never paste tracker text straight into the command line.** Issue titles and descriptions routinely contain `"`, backticks, and `$(…)`. Inlined, a quote ends the argument and `$(…)` executes in your shell before `herdr` ever sees it — you would be running whatever the ticket says, which is not the same thing as sending it to an agent.
+
+## In the Herdr app (`HC_TERMINAL_ID` set)
+
+Steps 1, 2 and 6's rules are unchanged. The mechanics of 3–5 change because the app's
+`space.new` registers the worktree, starts the agent and delivers its first prompt in
+one command. `herdr-app --skill` and `hc --skill` print the manuals for the installed
+version; read them when a shape below errors.
+
+**3–4. Setup before the space exists.** Run the post-create hook in an `hc` terminal
+from the worktree and wait for it to exit:
+
+```bash
+hc run --bg --no-notify --name "<repo>-<issue>-setup" --cwd "<path>" -- \
+  gren hook-run --type post-create --path "<path>" --branch "<branch>" --base "<base-branch>"
+hc wait "<repo>-<issue>-setup" --timeout 900   # JSON: .ended, .exit_code
+hc read "<repo>-<issue>-setup" --lines 60      # on a non-zero exit_code
+hc rm "<repo>-<issue>-setup"
+```
+
+`hc wait` exits 0 whatever the program did: read `.exit_code`, not `$?`.
+A hook that reaches a local service (a database in OrbStack, a dev cluster) and fails
+with `No route to host` while `/usr/bin/nc -z <host> <port>` connects is macOS's Local
+Network permission, not the hook: Apple's own binaries are exempt, so `nc` passes and
+Python is refused. The person allows Herdr under System Settings → Privacy & Security →
+Local Network; until then, say which phases ran.
+`.reason: "timeout"` is a check-in, not a failure: wait again. No sentinel, no attempt
+tag: the terminal ends with its program, so a re-run is a new terminal. An interactive
+hook needs the person: start it as a tab they can see instead (`herdr-app do tab.new
+--folder "<path>" --argv '["gren","hook-run",…,"--interactive"]'`) and tell them it is
+waiting.
+
+**5–6. One command: the space, Claude and its first prompt.**
+
+```bash
+args=$(jq -n --arg name "<branch>" --arg folder "<path>" --arg session "<issue>-<slug>" \
+  --arg task "$prompt" '{name: $name, folder: $folder, argv: ["claude", "--name", $session], task: $task}')
+herdr-app do space.new "$args"        # → {"space", "tab", "terminal"}
+```
+
+- Name the space with the branch, slashes and all, as in step 3.
+- `task` reaches Claude as its first argument (`claude --name <session> "<task>"`), so it
+  is sent before Claude even draws: no readiness wait, no paste race. Build `$args` with
+  `jq`, never by interpolation; the text is passed through unexpanded (verified with
+  `$(…)` and quotes in the task).
+- Without a first prompt (step 6 says ask first), leave `task` out: Claude starts idle.
+- `space.new` **shows** the new space. When the person did not ask to jump there, select
+  their space back: `herdr-app do space.select --id "<their space>"` (read it from
+  `herdr-app status` before).
+- Check the receipt: `hc get <terminal>` reports `foreground.argv` with the task and a
+  `status` once Claude reports one. A folder Claude does not trust shows its trust dialog
+  instead of starting; `hc read <terminal>` shows it. Worktrees under a trusted parent
+  (`~`) do not ask.
+- The Claude session name (`--name`) is the only name: there is no separate
+  `agent start` name. `hc` addresses it by terminal (`t7`).
+
+**Remove.** The gates are the same; the tools differ.
+
+1. Uncommitted work: `gren delete --dry-run --format=json`, as below.
+2. Live agent: `hc ls --json` lists every terminal with its `cwd` and `status`; any
+   under the worktree (directory boundary, as below) that is `working` or `blocked`
+   stops the removal. Fail closed when `hc ls` errors.
+3. Let the person confirm: an interactive pre-remove hook (flyt's database drop) needs a
+   TTY, so open the delete as a tab they can see, from the main checkout:
+   `herdr-app do tab.new --name "remove <branch>" --folder "<main repo>" --argv '["gren","delete","--","<branch>"]'`.
+   Use `gren delete -f` only under the fallback rules below.
+4. Close the space: find it in `herdr-app ls` by name or by its terminals' `cwd`, then
+   `herdr-app do space.close --id "<space>" --confirmed true`. That ends its terminals.
 
 ## Remove — "we're done with ABC-123, remove the worktree"
 
